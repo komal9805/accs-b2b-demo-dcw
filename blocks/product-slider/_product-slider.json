@@ -1,0 +1,40 @@
+{
+  "definitions": [
+    {
+      "title": "Product Slider",
+      "id": "product-slider",
+      "model": "product-slider",
+      "plugins": {
+        "da": {
+          "type": "key-value-block"
+        }
+      }
+    }
+  ],
+  "models": [
+    {
+      "id": "product-slider",
+      "fields": [
+        {
+          "component": "text",
+          "name": "categoryIds",
+          "label": "Category IDs",
+          "required": true,
+          "description": "Comma-separated Magento category entity IDs (e.g. 3, 4, 12)."
+        },
+        {
+          "component": "text",
+          "name": "pageSize",
+          "label": "Page size",
+          "value": "12"
+        },
+        {
+          "component": "text",
+          "name": "heading",
+          "label": "Heading"
+        }
+      ]
+    }
+  ],
+  "filters": []
+}

@@ -137,7 +137,8 @@
         "image",
         "text",
         "targeted-block",
-        "product-recommendations"
+        "product-recommendations",
+        "product-slider"
       ]
     }
   ]

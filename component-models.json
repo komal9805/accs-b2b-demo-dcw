@@ -303,6 +303,31 @@
     ]
   },
   {
+    "id": "product-slider",
+    "fields": [
+      {
+        "component": "text",
+        "name": "categoryIds",
+        "label": "Category IDs",
+        "required": true,
+        "valueType": "string"
+      },
+      {
+        "component": "text",
+        "name": "pageSize",
+        "label": "Page size",
+        "value": "12",
+        "valueType": "string"
+      },
+      {
+        "component": "text",
+        "name": "heading",
+        "label": "Heading",
+        "valueType": "string"
+      }
+    ]
+  },
+  {
     "id": "targeted-block",
     "fields": [
       {
