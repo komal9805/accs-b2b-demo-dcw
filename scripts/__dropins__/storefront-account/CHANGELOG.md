@@ -1,5 +1,13 @@
 # @dropins/storefront-account
 
+## 3.2.1
+
+### Patch Changes
+
+- b47c3b4: Fix customer **select/dropdown custom attributes** end-to-end: extend `GET_CUSTOMER` with `AttributeSelectedOptions` / `selected_options`, map those values in `transformCustomer`, and prefer field `defaultValue` over option `isDefault` in `FormInputs` selects.
+
+  Fix **date-only** strings in `formatDateToLocale` so calendar days do not shift by timezone (ISO `YYYY-MM-DD` formatted with UTC; optional whitespace trimmed).
+
 ## 3.2.0
 
 ### Minor Changes

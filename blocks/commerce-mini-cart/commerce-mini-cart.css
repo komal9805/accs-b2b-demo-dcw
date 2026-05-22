@@ -16,3 +16,12 @@
 .commerce-mini-cart__update-message--visible {
     display: block;
 }
+
+.dropin-cart-item__configurations__item {
+    font-size: var(--body-font-size-m, 1rem);
+    line-height: 1.5;
+}
+
+.dropin-cart-item__configurations__item__value {
+    font-weight: 400;
+}

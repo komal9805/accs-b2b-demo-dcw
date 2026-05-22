@@ -1,4 +1,35 @@
-const e = ``, _ = `
+const e = `
+  fragment PRICE_RANGE_FRAGMENT on PriceRange {
+    minimum_price {
+      regular_price {
+        value
+        currency
+      }
+      final_price {
+        value
+        currency
+      }
+      discount {
+        percent_off
+        amount_off
+      }
+    }
+    maximum_price {
+      regular_price {
+        value
+        currency
+      }
+      final_price {
+        value
+        currency
+      }
+      discount {
+        percent_off
+        amount_off
+      }
+    }
+  }
+`, _ = `
   fragment CUSTOMIZABLE_OPTIONS_FRAGMENT on SelectedCustomizableOption {
     type
     customizable_option_uid
@@ -155,6 +186,31 @@ const e = ``, _ = `
     }
     only_x_left_in_stock
     stock_status
+    ... on SimpleProduct {
+      price_range {
+        ...PRICE_RANGE_FRAGMENT
+      }
+    }
+    ... on ConfigurableProduct {
+      price_range {
+        ...PRICE_RANGE_FRAGMENT
+      }
+    }
+    ... on VirtualProduct {
+      price_range {
+        ...PRICE_RANGE_FRAGMENT
+      }
+    }
+    ... on DownloadableProduct {
+      price_range {
+        ...PRICE_RANGE_FRAGMENT
+      }
+    }
+    ... on GiftCardProduct {
+      price_range {
+        ...PRICE_RANGE_FRAGMENT
+      }
+    }
   }
   ... on SimpleCartItem {
     available_gift_wrapping {
@@ -195,6 +251,9 @@ const e = ``, _ = `
         label
         url
       }
+      price_range {
+        ...PRICE_RANGE_FRAGMENT
+      }
       price_tiers {
         quantity
         final_price {
@@ -226,6 +285,15 @@ const e = ``, _ = `
       values {
         uid
         label
+        quantity
+        priceV2 {
+          value
+          currency
+        }
+        original_price {
+          value
+          currency
+        }
       }
     }
   }

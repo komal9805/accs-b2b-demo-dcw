@@ -71,6 +71,278 @@
   margin-top: var(--spacing-xsmall);
 }
 
+/*
+ * Bundle options – vertical choice lists per Magento bundle input types
+ * @see https://experienceleague.adobe.com/en/docs/commerce-admin/catalog/products/types/product-create-bundle
+ */
+.pdp-swatches--bundle .pdp-swatches__field {
+  margin-bottom: var(--spacing-medium);
+  contain: layout style;
+}
+
+.pdp-swatches--bundle .pdp-swatches__field__label {
+  font-weight: 600;
+  margin-bottom: var(--spacing-xsmall);
+}
+
+.pdp-swatches--bundle .pdp-swatches__required {
+  color: var(--color-alert-700, #c00);
+  margin-left: 0.25em;
+}
+
+.pdp-swatches--bundle .pdp-swatches__error {
+  color: var(--color-alert-700, #c00);
+  font-size: var(--body-font-size-s, 0.875rem);
+  margin-top: var(--spacing-xsmall);
+}
+
+/*
+ * Override drop-in swatch row layout (flex-wrap pills) – Magento vertical lists
+ * for radio / checkbox bundle options.
+ */
+.pdp-swatches--bundle .pdp-swatches__options--radio,
+.pdp-swatches--bundle .pdp-swatches__options--checkbox {
+  display: flex !important;
+  flex-direction: column !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  gap: var(--spacing-xsmall);
+  width: 100%;
+}
+
+.pdp-swatches--bundle .pdp-swatches__option-item {
+  display: block;
+  width: 100%;
+}
+
+.pdp-swatches--bundle .pdp-swatches__option-item--radio .dropin-radio-button,
+.pdp-swatches--bundle .pdp-swatches__option-item--checkbox .dropin-checkbox {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  padding: var(--spacing-xxsmall) 0;
+  cursor: pointer;
+}
+
+.pdp-swatches--bundle .pdp-swatches__option-item--radio .dropin-radio-button__label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  line-height: 1.4;
+}
+
+.pdp-swatches--bundle .pdp-swatches__option-item--radio .dropin-radio-button__description,
+.pdp-swatches--bundle .pdp-swatches__option-item--checkbox .dropin-checkbox__description:empty {
+  display: none;
+}
+
+.pdp-swatches--bundle .pdp-swatches__option-item--checkbox .dropin-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xsmall);
+}
+
+.pdp-swatches--bundle .pdp-swatches__options--dropdown {
+  width: 100%;
+}
+
+.pdp-swatches--bundle .pdp-swatches__dropdown-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.pdp-swatches--bundle .pdp-swatches__dropdown {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--spacing-xbig, 2.5rem);
+  padding: var(--spacing-xsmall) calc(var(--spacing-xbig, 2.5rem) + var(--spacing-xxsmall, 0.25rem)) var(--spacing-xsmall) var(--spacing-small);
+  border: 1px solid var(--color-neutral-500, #949494);
+  border-radius: var(--shape-border-radius-1, 4px);
+  background-color: var(--background-color, #fff);
+  background-image: url('../../icons/chevron-down.svg');
+  background-repeat: no-repeat;
+  background-position: right var(--spacing-xsmall) center;
+  background-size: 1rem 1rem;
+  font: inherit;
+  line-height: 1.4;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pdp-swatches--bundle .pdp-swatches__dropdown:hover {
+  border-color: var(--color-neutral-700, #666);
+}
+
+.pdp-swatches--bundle .pdp-swatches__dropdown:focus {
+  outline: none;
+  border-color: var(--color-neutral-800, #333);
+  box-shadow: 0 0 0 1px var(--color-neutral-800, #333);
+}
+
+.pdp-swatches--bundle .pdp-swatches__options--multiselect {
+  width: 100%;
+}
+
+.pdp-swatches--bundle .pdp-swatches__multiselect {
+  width: 100%;
+  padding: var(--spacing-xsmall);
+  border: 1px solid var(--color-neutral-500, #949494);
+  border-radius: var(--shape-border-radius-1, 4px);
+  background: var(--background-color, #fff);
+  font: inherit;
+}
+
+.pdp-swatches--bundle .pdp-swatches__multiselect option {
+  padding: var(--spacing-xsmall) var(--spacing-xsmall);
+}
+
+.pdp-swatches--bundle .pdp-swatches__option-qty-slot {
+  min-height: var(--spacing-xbig, 2.5rem);
+  margin-top: var(--spacing-small);
+  transition: opacity 0.15s ease;
+}
+
+.pdp-swatches--bundle .pdp-swatches__option-qty {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.pdp-swatches--bundle .pdp-swatches__option-qty-control {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 100%;
+}
+
+.pdp-swatches--bundle .pdp-swatches__option-qty-control.dropin-incrementer {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.pdp-swatches--bundle .pdp-swatches__option-qty-control .dropin-incrementer__content {
+  box-sizing: border-box;
+  width: auto;
+  min-width: calc(var(--spacing-xxbig, 3rem) * 3);
+  max-width: 100%;
+}
+
+.pdp-swatches--bundle .pdp-swatches__option-qty--disabled {
+  pointer-events: none;
+}
+
+.pdp-swatches--bundle .pdp-swatches__option-qty--disabled .dropin-incrementer__content:hover,
+.pdp-swatches--bundle .pdp-swatches__option-qty--disabled .dropin-incrementer__content:active,
+.pdp-swatches--bundle .pdp-swatches__option-qty--disabled .dropin-incrementer__content--disabled:hover,
+.pdp-swatches--bundle .pdp-swatches__option-qty--disabled .dropin-incrementer__content--disabled:active {
+  border-color: var(--color-neutral-500, #949494);
+}
+
+.pdp-swatches--bundle .pdp-swatches__option-qty--disabled .dropin-incrementer__decrease-button:hover,
+.pdp-swatches--bundle .pdp-swatches__option-qty--disabled .dropin-incrementer__increase-button:hover,
+.pdp-swatches--bundle .pdp-swatches__option-qty--disabled .dropin-incrementer__decrease-button:focus,
+.pdp-swatches--bundle .pdp-swatches__option-qty--disabled .dropin-incrementer__increase-button:focus {
+  background-color: var(--color-neutral-300, #ebebeb);
+}
+
+.pdp-swatches--bundle .pdp-swatches__options-list {
+  contain: layout style;
+}
+
+.pdp-swatches--bundle .pdp-swatches__options-list .pdp-swatches__field:last-child {
+  margin-bottom: 0;
+}
+
+/* Full-width separator before main qty / add to cart when bundle summary is hidden */
+.product-details__configuration:has(.pdp-swatches--bundle-no-summary) .product-details__options {
+  margin-bottom: var(--spacing-small);
+  padding-bottom: var(--spacing-big);
+  border-bottom: 1px dotted var(--color-neutral-500, #949494);
+}
+
+/* Bundle customization summary – Magento "Summary" block */
+.pdp-bundle-summary {
+  margin-top: var(--spacing-small);
+  padding-top: var(--spacing-small);
+  border-top: 1px dotted var(--color-neutral-500, #949494);
+  font-size: var(--body-font-size-m, 1rem);
+}
+
+.pdp-bundle-summary__price-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--spacing-xsmall);
+  margin: 0 0 var(--spacing-small);
+  line-height: 1.3;
+  min-height: 1.75em;
+  transition: opacity 0.15s ease;
+}
+
+.pdp-bundle-summary__price-row > * {
+  margin: 0;
+}
+
+.pdp-bundle-summary__price {
+  font-size: var(--heading-font-size-xl, 1.75rem);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.pdp-bundle-summary__price--regular {
+  font-size: var(--body-font-size-m, 1rem);
+  font-weight: 400;
+  text-decoration: line-through;
+  color: var(--color-neutral-600, #666);
+}
+
+.pdp-bundle-summary__price--final {
+  color: var(--color-neutral-900, #1a1a1a);
+}
+
+.pdp-bundle-summary__title {
+  font-size: var(--heading-font-size-m, 1.25rem);
+  font-weight: 600;
+  margin: 0 0 var(--spacing-small);
+  padding-bottom: var(--spacing-xsmall);
+  border-bottom: 1px dotted var(--color-neutral-500, #949494);
+}
+
+.pdp-bundle-summary__list {
+  margin: 0;
+}
+
+.pdp-bundle-summary__item {
+  margin-bottom: var(--spacing-small);
+  font-size: var(--body-font-size-m, 1rem);
+  line-height: 1.5;
+  min-height: 2.5em;
+}
+
+.pdp-bundle-summary__option {
+  font-weight: 700;
+  margin-bottom: var(--spacing-xxsmall);
+  font-size: var(--body-font-size-m, 1rem);
+}
+
+.pdp-bundle-summary__value-line {
+  margin: 0;
+  padding-left: 0;
+  font-size: var(--body-font-size-m, 1rem);
+}
+
+.pdp-bundle-summary__empty {
+  margin: 0;
+  color: var(--color-neutral-600, #666);
+  font-size: var(--body-font-size-m, 1rem);
+}
+
 @media (min-width: 900px) {
   .product-details__wrapper {
     grid-template-columns: repeat(var(--grid-3-columns), 1fr);
