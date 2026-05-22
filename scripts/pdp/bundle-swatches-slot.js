@@ -13,17 +13,24 @@ import {
   buildBundleSummaryLines,
   buildInitialQuantityMap,
   buildInitialSelectedMap,
-  canEditBundleOptionQuantity,
   formatBundleItemLabel,
   getBundleInputType,
   getSelectedItemIds,
   isDropdownInputType,
+  isMultiValueInputType,
   resolveBundleOptionInputType,
   resolveSelectionAdminQuantity,
   supportsUserDefinedQuantity,
   syncBundleSelection,
 } from './bundle-options.js';
 import { getProductBundleMeta } from './bundle-meta-store.js';
+import {
+  getSelectionSku,
+  getUserDefinedQtyBySku,
+  resolveAllUserDefinedQty,
+  resolveSelectedUserDefinedQty,
+  resolveUserDefinedQtyForItem,
+} from './bundle-user-defined-qty.js';
 import { getOptionsUIDsFromUrl } from '../commerce.js';
 import { BundleSummary, DEFAULT_SUMMARY_LABEL } from './bundle-summary.js';
 
@@ -44,6 +51,10 @@ function resolveInitialOptionsUIDs() {
   }
 
   return [];
+}
+
+function formatSingleSelectItemLabel(item) {
+  return item.label || item.title || '';
 }
 
 function formatOptionPrice(item) {
@@ -134,24 +145,17 @@ function BundleDropdown({
       value: value || '',
       onChange: (event) => onValueChange(option.id, event.target.value),
     }, [
-      h('option', {
-        key: '__choose__',
-        value: '',
-      }, chooseLabel),
+      h('option', { key: '__choose__', value: '' }, chooseLabel),
       ...option.items.map((item) => h('option', {
         key: item.id,
         value: item.id,
         disabled: !item.inStock,
-      }, `${formatBundleItemLabel(item)}${formatOptionPrice(item)}`)),
+      }, `${formatSingleSelectItemLabel(item)}${formatOptionPrice(item)}`)),
     ]),
   ]);
 }
 
-function BundleMultiselect({
-  option,
-  value,
-  onValueChange,
-}) {
+function BundleMultiselect({ option, value, onValueChange }) {
   const selectRef = useRef(null);
   const selected = value || [];
   const selectedKey = selected.slice().sort().join('|');
@@ -159,7 +163,6 @@ function BundleMultiselect({
   useLayoutEffect(() => {
     const el = selectRef.current;
     if (!el) return;
-
     Array.from(el.options).forEach((opt) => {
       opt.selected = selected.includes(opt.value);
     });
@@ -188,7 +191,9 @@ function BundleMultiselect({
 function BundleOptionField({
   option,
   value,
-  quantity,
+  quantityMap,
+  editableBySku,
+  bundleSku,
   onValueChange,
   onQuantityChange,
   chooseLabel,
@@ -198,60 +203,43 @@ function BundleOptionField({
   const selectedIds = getSelectedItemIds(option, { [option.id]: value });
   const showError = option.required && selectedIds.length === 0;
   const isDropdown = isDropdownInputType(inputType);
+  const bundleMeta = getProductBundleMeta();
 
   let control = null;
 
   if (isDropdown) {
-    control = h(
-      'div',
-      { className: 'pdp-swatches__options pdp-swatches__options--dropdown' },
-      h(BundleDropdown, {
-        option,
-        value,
-        chooseLabel,
-        onValueChange,
-      }),
-    );
+    control = h('div', { className: 'pdp-swatches__options pdp-swatches__options--dropdown' }, h(BundleDropdown, {
+      option, value, chooseLabel, onValueChange,
+    }));
   } else if (inputType === 'radio') {
-    control = h(
-      'div',
-      {
-        className: 'pdp-swatches__options pdp-swatches__options--radio',
-        role: 'radiogroup',
-        'aria-label': option.label,
-      },
-      option.items.map((item) => renderOptionItemWrapper(item.id, inputType, h(RadioButton, {
-        name: option.id,
-        value: item.id,
-        label: `${formatBundleItemLabel(item)}${formatOptionPrice(item)}`,
-        checked: value === item.id,
-        disabled: !item.inStock,
-        onChange: () => onValueChange(option.id, item.id),
-      }))),
-    );
+    control = h('div', {
+      className: 'pdp-swatches__options pdp-swatches__options--radio',
+      role: 'radiogroup',
+      'aria-label': option.label,
+    }, option.items.map((item) => renderOptionItemWrapper(item.id, inputType, h(RadioButton, {
+      name: option.id,
+      value: item.id,
+      label: `${formatSingleSelectItemLabel(item)}${formatOptionPrice(item)}`,
+      checked: value === item.id,
+      disabled: !item.inStock,
+      onChange: () => onValueChange(option.id, item.id),
+    }))));
   } else if (inputType === 'multiselect') {
-    control = h(
-      'div',
-      { className: 'pdp-swatches__options pdp-swatches__options--multiselect' },
-      h(BundleMultiselect, {
-        option,
-        value,
-        onValueChange,
-      }),
-    );
+    control = h('div', { className: 'pdp-swatches__options pdp-swatches__options--multiselect' }, h(BundleMultiselect, {
+      option, value, onValueChange,
+    }));
   } else {
-    control = h(
-      'div',
-      {
-        className: 'pdp-swatches__options pdp-swatches__options--checkbox',
-        role: 'group',
-        'aria-label': option.label,
-      },
-      option.items.map((item) => renderOptionItemWrapper(item.id, inputType, h(Checkbox, {
+    control = h('div', {
+      className: 'pdp-swatches__options pdp-swatches__options--checkbox',
+      role: 'group',
+      'aria-label': option.label,
+    }, option.items.map((item) => {
+      const checked = (value || []).includes(item.id);
+      return renderOptionItemWrapper(item.id, inputType, h(Checkbox, {
         name: option.id,
         value: item.id,
         label: `${formatBundleItemLabel(item, { includeFixedQuantity: true })}${formatOptionPrice(item)}`,
-        checked: (value || []).includes(item.id),
+        checked,
         disabled: !item.inStock,
         onChange: (event) => {
           const current = value || [];
@@ -260,8 +248,8 @@ function BundleOptionField({
             : current.filter((id) => id !== item.id);
           onValueChange(option.id, next);
         },
-      }))),
-    );
+      }));
+    }));
   }
 
   const selectedId = selectedIds[0] || null;
@@ -270,17 +258,22 @@ function BundleOptionField({
     : null;
   const hasSelection = Boolean(selectedId);
   const supportsQty = supportsUserDefinedQuantity(inputType);
-  const canEditQty = hasSelection
-    && canEditBundleOptionQuantity(inputType, selectedItem);
+  const selectionSku = getSelectionSku(selectedItem) || '';
+  const userDefined = selectionSku
+    ? (editableBySku[selectionSku] ?? getUserDefinedQtyBySku(bundleSku, selectionSku))
+    : undefined;
+  const canEditQty = hasSelection && userDefined === true;
   const adminQty = hasSelection
-    ? resolveSelectionAdminQuantity(selectedItem)
+    ? resolveSelectionAdminQuantity(selectedItem, option, bundleMeta)
     : 0;
   let qtyValue = 0;
   if (hasSelection) {
-    qtyValue = canEditQty ? (quantity ?? adminQty) : adminQty;
+    qtyValue = canEditQty
+      ? (quantityMap[option.id] ?? adminQty)
+      : adminQty;
   }
-  const qtyDisabled = !hasSelection || !canEditQty;
-  const qtyMin = hasSelection ? 1 : 0;
+  const qtyDisabled = !hasSelection || userDefined !== true;
+  const showQtyControl = supportsQty;
 
   return h('div', {
     className: `pdp-swatches__field pdp-swatches__field--${inputType}`,
@@ -293,27 +286,25 @@ function BundleOptionField({
       option.required && h('span', { className: 'pdp-swatches__required' }, '*'),
     ]),
     control,
-    supportsQty && h('div', { className: 'pdp-swatches__option-qty-slot' }, h(BundleOptionQuantity, {
-      key: option.id,
+    showQtyControl && h('div', { className: 'pdp-swatches__option-qty-slot' }, h(BundleOptionQuantity, {
+      key: `${option.id}-${selectedId}-${userDefined === true ? 'edit' : 'fixed'}`,
       optionId: option.id,
       quantity: qtyValue,
       disabled: qtyDisabled,
-      min: qtyMin,
+      min: hasSelection ? 1 : 0,
       onQuantityChange,
     })),
     showError && h('div', { className: 'pdp-swatches__error', role: 'alert' }, requiredLabel),
   ]);
 }
 
-const BundleOptionFieldMemo = memo(BundleOptionField);
-
-const BundleSummaryMemo = memo(BundleSummary);
-
 function BundleOptionsList({
   options,
   selection,
-  onSelectionChange,
+  editableBySku,
+  setEditableBySku,
   productRef,
+  onSelectionChange,
   chooseLabel,
   requiredLabel,
 }) {
@@ -331,21 +322,29 @@ function BundleOptionsList({
     );
   }, [productRef]);
 
+  const probeItem = useCallback(async (item) => {
+    const bundleSku = productRef.current?.sku;
+    const selectionSku = getSelectionSku(item);
+    if (!bundleSku || !selectionSku || !item) return;
+
+    const canEdit = await resolveUserDefinedQtyForItem(bundleSku, item, { force: true });
+    if (canEdit !== undefined) {
+      setEditableBySku((prev) => ({ ...prev, [selectionSku]: canEdit }));
+    }
+  }, [productRef, setEditableBySku]);
+
   const updateQuantityForSelection = useCallback((optionId, nextValue) => {
     const option = optionsRef.current.find(({ id }) => id === optionId);
     if (!option) return {};
 
     const inputType = getOptionInputType(option);
-    if (!isDropdownInputType(inputType) && inputType !== 'radio') {
-      return {};
-    }
-
-    if (!nextValue) {
-      return { [optionId]: 0 };
-    }
+    if (isMultiValueInputType(inputType)) return {};
+    if (!isDropdownInputType(inputType) && inputType !== 'radio') return {};
+    if (!nextValue) return { [optionId]: 0 };
 
     const item = option.items?.find(({ id }) => id === nextValue);
-    return { [optionId]: resolveSelectionAdminQuantity(item) };
+    const bundleMeta = getProductBundleMeta();
+    return { [optionId]: item ? resolveSelectionAdminQuantity(item, option, bundleMeta) : 0 };
   }, []);
 
   const commitSelection = useCallback((nextSelectedMap, nextQuantityMap) => {
@@ -355,31 +354,39 @@ function BundleOptionsList({
     });
   }, [onSelectionChange, syncSelection]);
 
-  const handleValueChange = useCallback((optionId, nextValue) => {
+  const handleValueChange = useCallback(async (optionId, nextValue) => {
+    const option = optionsRef.current.find(({ id }) => id === optionId);
     const nextSelectedMap = { ...selectionRef.current.selectedMap, [optionId]: nextValue };
     const nextQuantityMap = {
       ...selectionRef.current.quantityMap,
       ...updateQuantityForSelection(optionId, nextValue),
     };
     commitSelection(nextSelectedMap, nextQuantityMap);
-  }, [commitSelection, updateQuantityForSelection]);
 
-  const handleQuantityChange = useCallback((optionId, quantity) => {
-    const nextQuantityMap = {
-      ...selectionRef.current.quantityMap,
-      [optionId]: quantity,
-    };
-    commitSelection(selectionRef.current.selectedMap, nextQuantityMap);
+    const item = option?.items?.find(({ id }) => id === nextValue);
+    if (item) {
+      await probeItem(item);
+    }
+  }, [commitSelection, probeItem, updateQuantityForSelection]);
+
+  const handleQuantityChange = useCallback((qtyKey, quantity) => {
+    commitSelection(
+      selectionRef.current.selectedMap,
+      { ...selectionRef.current.quantityMap, [qtyKey]: quantity },
+    );
   }, [commitSelection]);
 
   const { selectedMap, quantityMap } = selection;
+  const bundleSku = productRef.current?.sku || '';
 
   return h('div', { className: 'pdp-swatches__options-list' }, options.map(
-    (option) => h(BundleOptionFieldMemo, {
-      key: option.id,
+    (option) => h(BundleOptionField, {
+      key: `${option.id}-${JSON.stringify(editableBySku)}`,
       option,
       value: selectedMap[option.id],
-      quantity: quantityMap[option.id],
+      quantityMap,
+      editableBySku,
+      bundleSku,
       onValueChange: handleValueChange,
       onQuantityChange: handleQuantityChange,
       chooseLabel,
@@ -388,13 +395,15 @@ function BundleOptionsList({
   ));
 }
 
-const BundleOptionsListMemo = memo(BundleOptionsList);
+const BundleSummaryMemo = memo(BundleSummary);
 
 function BundleSwatchesShell({
   options,
   selection,
-  onSelectionChange,
+  editableBySku,
+  setEditableBySku,
   productRef,
+  onSelectionChange,
   chooseLabel,
   requiredLabel,
   summaryProduct,
@@ -416,11 +425,13 @@ function BundleSwatchesShell({
       !hasSummaryItems && 'pdp-swatches--bundle-no-summary',
     ].filter(Boolean).join(' '),
   }, [
-    h(BundleOptionsListMemo, {
+    h(BundleOptionsList, {
       options,
       selection,
-      onSelectionChange,
+      editableBySku,
+      setEditableBySku,
       productRef,
+      onSelectionChange,
       chooseLabel,
       requiredLabel,
     }),
@@ -450,17 +461,55 @@ function BundleSwatchesRoot({ ctx }) {
   const productRef = useRef(initialProduct);
   const [options, setOptions] = useState(() => initialProduct?.options || []);
   const [summaryProduct, setSummaryProduct] = useState(initialProduct);
+  const [editableBySku, setEditableBySku] = useState({});
   const [selection, setSelection] = useState(() => {
     const initialUids = resolveInitialOptionsUIDs();
     const initialOptions = initialProduct?.options || [];
+    const bundleMeta = getProductBundleMeta();
     return {
-      selectedMap: buildInitialSelectedMap(initialOptions, initialUids),
-      quantityMap: buildInitialQuantityMap(initialOptions, initialUids),
+      selectedMap: buildInitialSelectedMap(initialOptions, initialUids, bundleMeta),
+      quantityMap: buildInitialQuantityMap(initialOptions, initialUids, bundleMeta),
     };
   });
 
   const onSelectionChange = useCallback((nextSelection) => {
     setSelection(nextSelection);
+  }, []);
+
+  const didProbeRef = useRef(false);
+
+  useEffect(() => {
+    if (didProbeRef.current) return undefined;
+    didProbeRef.current = true;
+
+    let cancelled = false;
+    (async () => {
+      const product = productRef.current;
+      if (!product?.sku || !product?.options?.length) return;
+
+      const bundleMeta = getProductBundleMeta();
+      const selectedMap = buildInitialSelectedMap(
+        product.options,
+        resolveInitialOptionsUIDs(),
+        bundleMeta,
+      );
+
+      const selectedFlags = await resolveSelectedUserDefinedQty(
+        product.sku,
+        product.options,
+        selectedMap,
+      );
+      if (!cancelled && Object.keys(selectedFlags).length) {
+        setEditableBySku((prev) => ({ ...prev, ...selectedFlags }));
+      }
+
+      const allFlags = await resolveAllUserDefinedQty(product.sku, product.options);
+      if (!cancelled) {
+        setEditableBySku((prev) => ({ ...prev, ...allFlags }));
+      }
+    })();
+
+    return () => { cancelled = true; };
   }, []);
 
   const didSyncInitialRef = useRef(false);
@@ -469,8 +518,9 @@ function BundleSwatchesRoot({ ctx }) {
     didSyncInitialRef.current = true;
 
     const initialUids = resolveInitialOptionsUIDs();
-    const selectedMap = buildInitialSelectedMap(options, initialUids);
-    const quantityMap = buildInitialQuantityMap(options, initialUids);
+    const bundleMeta = getProductBundleMeta();
+    const selectedMap = buildInitialSelectedMap(options, initialUids, bundleMeta);
+    const quantityMap = buildInitialQuantityMap(options, initialUids, bundleMeta);
     setSelection({ selectedMap, quantityMap });
     syncBundleSelection(options, selectedMap, quantityMap, productRef.current);
   }, [options]);
@@ -487,20 +537,21 @@ function BundleSwatchesRoot({ ctx }) {
       if (data?.sku === ctxRef.current.data?.sku) {
         const next = applyBundleProductTransform(data);
         productRef.current = next;
+        setOptions(next?.options || []);
         setSummaryProduct(next);
       }
     });
 
-    return () => {
-      off?.off?.();
-    };
+    return () => { off?.off?.(); };
   }, [ctx]);
 
   return h(BundleSwatchesShell, {
     options,
     selection,
-    onSelectionChange,
+    editableBySku,
+    setEditableBySku,
     productRef,
+    onSelectionChange,
     chooseLabel,
     requiredLabel,
     summaryProduct,
@@ -508,10 +559,6 @@ function BundleSwatchesRoot({ ctx }) {
   });
 }
 
-/**
- * ProductOptions Swatches slot – renders bundle options with drop-in SDK components.
- * Non-bundle products fall through to the default Swatches container.
- */
 export function bundleSwatchesSlot(ctx) {
   if (!ctx.data?.isBundle) {
     return;
@@ -519,6 +566,5 @@ export function bundleSwatchesSlot(ctx) {
 
   const container = document.createElement('div');
   ctx.replaceWith(container);
-
   render(h(BundleSwatchesRoot, { ctx }), container);
 }
