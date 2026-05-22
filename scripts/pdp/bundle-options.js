@@ -687,19 +687,16 @@ function getDropdownAdminDefaultItemId(option, meta = getProductBundleMeta()) {
     return '';
   }
 
-  for (const item of option.items) {
+  const defaultItem = option.items.find((item) => {
     const itemMeta = meta?.items?.[item.id] || {};
     if (itemMeta.isDefault === true) {
-      return item.id;
+      return true;
     }
 
-    const selectionMeta = getCoreSelectionMeta(item, meta, option);
-    if (selectionMeta.isDefault === true) {
-      return item.id;
-    }
-  }
+    return getCoreSelectionMeta(item, meta, option).isDefault === true;
+  });
 
-  return '';
+  return defaultItem?.id || '';
 }
 
 export function buildInitialQuantityMap(options, optionsUIDs = [], meta = getProductBundleMeta()) {
@@ -759,14 +756,17 @@ function resolveInitialSingleSelectValue(option, matchingItems, inputType, meta)
     return getDropdownAdminDefaultItemId(option, meta);
   }
 
-  for (const item of option.items || []) {
+  const adminDefaultItem = (option.items || []).find((item) => {
     const itemMeta = meta?.items?.[item.id] || {};
     if (itemMeta.isDefault === true) {
-      return item.id;
+      return true;
     }
-    if (getCoreSelectionMeta(item, meta, option).isDefault === true) {
-      return item.id;
-    }
+
+    return getCoreSelectionMeta(item, meta, option).isDefault === true;
+  });
+
+  if (adminDefaultItem) {
+    return adminDefaultItem.id;
   }
 
   const catalogDefault = option.items?.find(({ isDefault }) => isDefault);

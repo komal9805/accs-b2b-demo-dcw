@@ -7,6 +7,7 @@ import {
 } from '@dropins/tools/preact-compat.js';
 import { useText } from '@dropins/tools/i18n.js';
 import { events } from '@dropins/tools/event-bus.js';
+import { getProductConfigurationValues } from '@dropins/storefront-pdp/api.js';
 import {
   applyBundleProductTransform,
   buildBundleSummaryLines,
@@ -24,7 +25,6 @@ import {
 } from './bundle-options.js';
 import { getProductBundleMeta } from './bundle-meta-store.js';
 import { getOptionsUIDsFromUrl } from '../commerce.js';
-import { getProductConfigurationValues } from '@dropins/storefront-pdp/api.js';
 import { BundleSummary, DEFAULT_SUMMARY_LABEL } from './bundle-summary.js';
 
 const DEFAULT_CHOOSE_LABEL = 'Choose a selection...';
@@ -275,9 +275,10 @@ function BundleOptionField({
   const adminQty = hasSelection
     ? resolveSelectionAdminQuantity(selectedItem)
     : 0;
-  const qtyValue = !hasSelection
-    ? 0
-    : (canEditQty ? (quantity ?? adminQty) : adminQty);
+  let qtyValue = 0;
+  if (hasSelection) {
+    qtyValue = canEditQty ? (quantity ?? adminQty) : adminQty;
+  }
   const qtyDisabled = !hasSelection || !canEditQty;
   const qtyMin = hasSelection ? 1 : 0;
 

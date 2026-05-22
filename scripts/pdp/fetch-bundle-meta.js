@@ -112,7 +112,9 @@ function withTimeout(promise, ms) {
 function indexSelection(selections, key, data) {
   selections[key] = { ...selections[key], ...data };
 
-  const { optionId, selectionId, optionTitle, label } = data;
+  const {
+    optionId, selectionId, optionTitle, label,
+  } = data;
   if (optionId && selectionId) {
     selections[`${optionId}:${selectionId}`] = {
       ...(selections[`${optionId}:${selectionId}`] || {}),
