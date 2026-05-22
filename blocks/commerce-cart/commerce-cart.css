@@ -62,6 +62,15 @@
   width: fit-content;
 }
 
+.dropin-cart-item__configurations__item {
+  font-size: var(--body-font-size-m, 1rem);
+  line-height: 1.5;
+}
+
+.dropin-cart-item__configurations__item__value {
+  font-weight: 400;
+}
+
 /* Request Quote */
 .cart__request-quote-button {
   width: 100%;

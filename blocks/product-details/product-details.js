@@ -30,6 +30,7 @@ import {
 
 // Initializers
 import { IMAGES_SIZES } from '../../scripts/initializers/pdp.js';
+import { bundleSwatchesSlot } from '../../scripts/pdp/bundle-swatches-slot.js';
 import '../../scripts/initializers/cart.js';
 import '../../scripts/initializers/wishlist.js';
 
@@ -192,10 +193,11 @@ export default async function decorate(block) {
     // Short Description
     pdpRendered.render(ProductShortDescription, {})($shortDescription),
 
-    // Configuration - Swatches
+    // Configuration - ProductOptions drop-in (bundle Swatches slot for input types)
     pdpRendered.render(ProductOptions, {
       hideSelectedValue: false,
       slots: {
+        Swatches: bundleSwatchesSlot,
         SwatchImage: (ctx) => {
           tryRenderAemAssetsImage(ctx, {
             ...imageSlotConfig(ctx),

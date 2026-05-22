@@ -4,6 +4,17 @@ import { initialize, setEndpoint, fetchProductData } from '@dropins/storefront-p
 import { isAemAssetsEnabled, tryGenerateAemAssetsOptimizedUrl } from '@dropins/tools/lib/aem/assets.js';
 import { initializeDropin } from './index.js';
 import {
+  setupBundleValidation,
+  transformBundleProduct,
+  transformBundleOptions,
+  buildBundleItemMeta,
+} from '../pdp/bundle-options.js';
+import {
+  fetchBundleCoreMeta,
+  mergeBundleOptionTypes,
+} from '../pdp/fetch-bundle-meta.js';
+import { setProductBundleMeta } from '../pdp/bundle-meta-store.js';
+import {
   CS_FETCH_GRAPHQL,
   fetchPlaceholders,
   getOptionsUIDsFromUrl,
@@ -88,15 +99,33 @@ await initializeDropin(async () => {
     return data;
   };
 
-  const [product, labels] = await Promise.all([
-    getProductData(true),
-    fetchPlaceholders('placeholders/pdp.json'),
-  ]);
+  const product = await getProductData(true);
 
   if (!product?.sku) {
     return loadErrorPage();
   }
 
+  const [labels, coreBundleMeta] = await Promise.all([
+    fetchPlaceholders('placeholders/pdp.json'),
+    fetchBundleCoreMeta(sku, product),
+  ]);
+
+  const mergedOptionTypes = mergeBundleOptionTypes(product, coreBundleMeta);
+  const bundleMetaContext = {
+    ...coreBundleMeta,
+    optionTypes: mergedOptionTypes,
+  };
+  const bundleItemMeta = product?.options
+    ? buildBundleItemMeta(product, bundleMetaContext)
+    : {};
+
+  const productBundleMeta = {
+    ...bundleItemMeta,
+    optionTypes: mergedOptionTypes,
+    selections: coreBundleMeta.selections || {},
+  };
+
+  setProductBundleMeta(productBundleMeta);
   const langDefinitions = {
     default: {
       ...labels,
@@ -106,11 +135,15 @@ await initializeDropin(async () => {
   const models = {
     ProductDetails: {
       initialData: { ...product },
+      transformer: (data) => transformBundleProduct(data, productBundleMeta),
+    },
+    ProductOptions: {
+      optionsTransformer: (options) => transformBundleOptions(options, productBundleMeta),
     },
   };
 
   // Initialize Dropins
-  return initializers.mountImmediately(initialize, {
+  const dropin = await initializers.mountImmediately(initialize, {
     sku,
     optionsUIDs,
     langDefinitions,
@@ -118,6 +151,10 @@ await initializeDropin(async () => {
     acdl: true,
     persistURLParams: true,
   });
+
+  setupBundleValidation();
+
+  return dropin;
 })();
 
 async function preloadImageMiddleware(data) {
