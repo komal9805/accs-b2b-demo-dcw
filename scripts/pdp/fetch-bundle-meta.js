@@ -1,8 +1,10 @@
 import { CORE_FETCH_GRAPHQL, CS_FETCH_GRAPHQL } from '../commerce.js';
 import {
   inferMultiInputTypeFromTitle,
+  isMultiValueInputType,
   parseBundleOptionUid,
-  resolveCanChangeQuantity,
+  parseCanChangeQuantity,
+  supportsCartQtyProbe,
 } from './bundle-options.js';
 
 const MAGENTO_BUNDLE_QUERY = `
@@ -21,6 +23,9 @@ const MAGENTO_BUNDLE_QUERY = `
               quantity
               can_change_quantity
               is_default
+              product {
+                sku
+              }
             }
           }
         }
@@ -45,6 +50,9 @@ const CATALOG_BUNDLE_QUERY = `
             ... on ProductViewOptionValueProduct {
               quantity
               isDefault
+              product {
+                sku
+              }
             }
           }
         }
@@ -61,6 +69,51 @@ const MAGENTO_TYPE_MAP = {
 };
 
 const CORE_META_TIMEOUT_MS = 5000;
+const CART_PROBE_TIMEOUT_MS = 8000;
+
+const CREATE_GUEST_CART_MUTATION = `
+  mutation CreateGuestCartForBundleProbe {
+    createGuestCart {
+      cart { id }
+    }
+  }
+`;
+
+function escapeGraphqlString(value) {
+  return JSON.stringify(String(value));
+}
+
+function buildProbeBundleQtyMutation(sku, uid, probeQty) {
+  return `
+    mutation ProbeBundleSelectionQty($cartId: String!) {
+      addProductsToCart(
+        cartId: $cartId
+        cartItems: [{
+          sku: ${escapeGraphqlString(sku)}
+          quantity: 1
+          selected_options: [${escapeGraphqlString(uid)}]
+          entered_options: [{
+            uid: ${escapeGraphqlString(uid)}
+            value: ${escapeGraphqlString(String(probeQty))}
+          }]
+        }]
+      ) {
+        cart {
+          itemsV2 {
+            items {
+              ... on BundleCartItem {
+                bundle_options {
+                  values { quantity }
+                }
+              }
+            }
+          }
+        }
+        user_errors { message }
+      }
+    }
+  `;
+}
 
 function isAdminDefaultFlag(value) {
   return value === true || value === 1 || value === '1';
@@ -122,8 +175,18 @@ function indexSelection(selections, key, data) {
     };
   }
   if (optionTitle && label) {
-    selections[`label:${optionTitle}:${label}`] = {
-      ...(selections[`label:${optionTitle}:${label}`] || {}),
+    const normalizedTitle = String(optionTitle).trim();
+    const normalizedLabel = String(label).trim();
+    selections[`label:${normalizedTitle}:${normalizedLabel}`] = {
+      ...(selections[`label:${normalizedTitle}:${normalizedLabel}`] || {}),
+      ...data,
+      optionTitle: normalizedTitle,
+      label: normalizedLabel,
+    };
+  }
+  if (data.sku) {
+    selections[`sku:${data.sku}`] = {
+      ...(selections[`sku:${data.sku}`] || {}),
       ...data,
     };
   }
@@ -168,8 +231,8 @@ export function buildCatalogBundleMetaFromProduct(rawProduct) {
         selectionId,
         optionTitle: label,
         label: value.title || value.label,
+        sku: value.product?.sku,
         ...(isAdminDefaultFlag(value.isDefault) ? { isDefault: true } : {}),
-        canChangeQuantity: resolveCanChangeQuantity(inputType, {}),
       });
     });
   });
@@ -214,17 +277,17 @@ async function fetchMagentoBundleMeta(sku) {
       item.options?.forEach((selection) => {
         const parsed = parseBundleOptionUid(selection.uid);
         const selectionId = parsed?.selectionId;
+        const selectionSku = selection.product?.sku;
 
         indexSelection(selections, selection.uid, {
           ...(isAdminDefaultFlag(selection.is_default) ? { isDefault: true } : {}),
-          ...(selection.can_change_quantity !== undefined && selection.can_change_quantity !== null
-            ? { canChangeQuantity: Boolean(selection.can_change_quantity) }
-            : {}),
+          canChangeQuantity: parseCanChangeQuantity(selection.can_change_quantity) ?? false,
           defaultQuantity: Math.max(1, Number(selection.quantity) || 1),
           optionId,
           selectionId,
           optionTitle: item.title,
           label: selection.label,
+          sku: selectionSku,
         });
       });
     });
@@ -279,19 +342,164 @@ function mergeBundleMetaSources(...sources) {
   return { optionTypes, selections };
 }
 
+function resolveSelectionInputType(optionTypes, entry) {
+  if (entry?.optionId && optionTypes[entry.optionId]) {
+    return optionTypes[entry.optionId];
+  }
+
+  if (entry?.optionTitle) {
+    return optionTypes[`title:${entry.optionTitle}`];
+  }
+
+  return undefined;
+}
+
+function hasMagentoBundleMeta(magentoMeta = {}) {
+  return Object.keys(magentoMeta.selections || {}).length > 0;
+}
+
+function collectPrimarySelectionUids(selections = {}) {
+  return Object.keys(selections).filter((key) => parseBundleOptionUid(key));
+}
+
+function applyCanChangeQuantityToSelection(meta, uid, canChangeQuantity, entry) {
+  indexSelection(meta.selections, uid, {
+    ...entry,
+    canChangeQuantity,
+  });
+}
+
+function applyFixedQuantityForMultiValueOptions(meta) {
+  const { optionTypes = {}, selections = {} } = meta;
+
+  collectPrimarySelectionUids(selections).forEach((uid) => {
+    const entry = selections[uid];
+    const inputType = resolveSelectionInputType(optionTypes, entry);
+
+    if (isMultiValueInputType(inputType)) {
+      applyCanChangeQuantityToSelection(meta, uid, false, entry);
+    }
+  });
+}
+
+async function createGuestCartId() {
+  const { data, errors } = await withTimeout(
+    CORE_FETCH_GRAPHQL.fetchGraphQl(CREATE_GUEST_CART_MUTATION, {}),
+    CART_PROBE_TIMEOUT_MS,
+  );
+
+  if (errors?.length) {
+    return null;
+  }
+
+  return data?.createGuestCart?.cart?.id || null;
+}
+
+function readCartSelectionQuantity(addToCartResult) {
+  const items = addToCartResult?.cart?.itemsV2?.items || [];
+  const bundleItems = items.filter((item) => item?.bundle_options?.length);
+  const latestItem = bundleItems[bundleItems.length - 1];
+  const firstValue = latestItem?.bundle_options?.[0]?.values?.[0];
+
+  if (firstValue?.quantity === undefined) {
+    return null;
+  }
+
+  return Number(firstValue.quantity);
+}
+
+/**
+ * ACCS replaces core products(filter:) with Catalog Service, which omits
+ * can_change_quantity. Probe via cart: fixed-qty selections ignore entered_options,
+ * user-defined selections honor them.
+ */
+async function probeSelectionCanChangeQuantity(sku, uid, defaultQuantity, cartId) {
+  const probeQty = Math.max(Number(defaultQuantity) + 1, 2);
+
+  try {
+    const { data, errors } = await withTimeout(
+      CORE_FETCH_GRAPHQL.fetchGraphQl(
+        buildProbeBundleQtyMutation(sku, uid, probeQty),
+        { variables: { cartId } },
+      ),
+      CART_PROBE_TIMEOUT_MS,
+    );
+
+    if (errors?.length || data?.addProductsToCart?.user_errors?.length) {
+      return false;
+    }
+
+    const cartQty = readCartSelectionQuantity(data?.addProductsToCart);
+    if (cartQty === null || Number.isNaN(cartQty)) {
+      return false;
+    }
+
+    return cartQty === probeQty;
+  } catch {
+    return false;
+  }
+}
+
+async function probeCanChangeQuantityFromCart(sku, meta) {
+  if (!sku || !meta?.selections) {
+    return meta;
+  }
+
+  applyFixedQuantityForMultiValueOptions(meta);
+
+  const probeTargets = collectPrimarySelectionUids(meta.selections)
+    .map((uid) => ({ uid, entry: meta.selections[uid] }))
+    .filter(({ entry }) => supportsCartQtyProbe(
+      resolveSelectionInputType(meta.optionTypes, entry),
+    ));
+
+  if (!probeTargets.length) {
+    return meta;
+  }
+
+  const cartId = await createGuestCartId();
+  if (!cartId) {
+    return meta;
+  }
+
+  await probeTargets.reduce(async (chain, { uid, entry }) => {
+    await chain;
+    const defaultQuantity = Math.max(1, Number(entry.defaultQuantity) || 1);
+    const canChangeQuantity = await probeSelectionCanChangeQuantity(
+      sku,
+      uid,
+      defaultQuantity,
+      cartId,
+    );
+
+    applyCanChangeQuantityToSelection(meta, uid, canChangeQuantity, entry);
+  }, Promise.resolve());
+
+  return meta;
+}
+
 /**
  * Fetches bundle meta from Magento core GraphQL when available, with Catalog Service fallback.
  */
 export async function fetchBundleCoreMeta(sku, rawProduct = null) {
-  const [magentoMeta, catalogFromProduct, catalogFromApi] = await Promise.all([
+  const catalogPromise = rawProduct
+    ? Promise.resolve(buildCatalogBundleMetaFromProduct(rawProduct))
+    : fetchCatalogBundleMeta(sku);
+
+  const [magentoMeta, catalogMeta] = await Promise.all([
     fetchMagentoBundleMeta(sku),
-    rawProduct
-      ? Promise.resolve(buildCatalogBundleMetaFromProduct(rawProduct))
-      : Promise.resolve({ optionTypes: {}, selections: {} }),
-    fetchCatalogBundleMeta(sku),
+    catalogPromise,
   ]);
 
-  return mergeBundleMetaSources(catalogFromProduct, catalogFromApi, magentoMeta);
+  const merged = mergeBundleMetaSources(catalogMeta, magentoMeta);
+
+  if (!hasMagentoBundleMeta(magentoMeta)) {
+    await probeCanChangeQuantityFromCart(sku, merged);
+  } else {
+    applyFixedQuantityForMultiValueOptions(merged);
+  }
+
+  return merged;
 }
 
 /**

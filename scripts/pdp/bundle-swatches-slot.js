@@ -18,6 +18,7 @@ import {
   getBundleInputType,
   getSelectedItemIds,
   isDropdownInputType,
+  isMultiValueInputType,
   resolveBundleOptionInputType,
   resolveSelectionAdminQuantity,
   supportsUserDefinedQuantity,
@@ -44,6 +45,12 @@ function resolveInitialOptionsUIDs() {
   }
 
   return [];
+}
+
+function formatOptionItemLabel(item) {
+  return formatBundleItemLabel(item, {
+    includeFixedQuantity: item.canChangeQuantity === false,
+  });
 }
 
 function formatOptionPrice(item) {
@@ -142,7 +149,7 @@ function BundleDropdown({
         key: item.id,
         value: item.id,
         disabled: !item.inStock,
-      }, `${formatBundleItemLabel(item)}${formatOptionPrice(item)}`)),
+      }, `${formatOptionItemLabel(item)}${formatOptionPrice(item)}`)),
     ]),
   ]);
 }
@@ -188,7 +195,7 @@ function BundleMultiselect({
 function BundleOptionField({
   option,
   value,
-  quantity,
+  quantityMap,
   onValueChange,
   onQuantityChange,
   chooseLabel,
@@ -198,6 +205,7 @@ function BundleOptionField({
   const selectedIds = getSelectedItemIds(option, { [option.id]: value });
   const showError = option.required && selectedIds.length === 0;
   const isDropdown = isDropdownInputType(inputType);
+  const bundleMeta = getProductBundleMeta();
 
   let control = null;
 
@@ -223,22 +231,18 @@ function BundleOptionField({
       option.items.map((item) => renderOptionItemWrapper(item.id, inputType, h(RadioButton, {
         name: option.id,
         value: item.id,
-        label: `${formatBundleItemLabel(item)}${formatOptionPrice(item)}`,
+        label: `${formatOptionItemLabel(item)}${formatOptionPrice(item)}`,
         checked: value === item.id,
         disabled: !item.inStock,
         onChange: () => onValueChange(option.id, item.id),
       }))),
     );
   } else if (inputType === 'multiselect') {
-    control = h(
-      'div',
-      { className: 'pdp-swatches__options pdp-swatches__options--multiselect' },
-      h(BundleMultiselect, {
-        option,
-        value,
-        onValueChange,
-      }),
-    );
+    control = h('div', { className: 'pdp-swatches__options pdp-swatches__options--multiselect' }, h(BundleMultiselect, {
+      option,
+      value,
+      onValueChange,
+    }));
   } else {
     control = h(
       'div',
@@ -247,20 +251,23 @@ function BundleOptionField({
         role: 'group',
         'aria-label': option.label,
       },
-      option.items.map((item) => renderOptionItemWrapper(item.id, inputType, h(Checkbox, {
-        name: option.id,
-        value: item.id,
-        label: `${formatBundleItemLabel(item, { includeFixedQuantity: true })}${formatOptionPrice(item)}`,
-        checked: (value || []).includes(item.id),
-        disabled: !item.inStock,
-        onChange: (event) => {
-          const current = value || [];
-          const next = event.target.checked
-            ? [...current, item.id]
-            : current.filter((id) => id !== item.id);
-          onValueChange(option.id, next);
-        },
-      }))),
+      option.items.map((item) => {
+        const checked = (value || []).includes(item.id);
+        return renderOptionItemWrapper(item.id, inputType, h(Checkbox, {
+          name: option.id,
+          value: item.id,
+          label: `${formatBundleItemLabel(item, { includeFixedQuantity: true })}${formatOptionPrice(item)}`,
+          checked,
+          disabled: !item.inStock,
+          onChange: (event) => {
+            const current = value || [];
+            const next = event.target.checked
+              ? [...current, item.id]
+              : current.filter((id) => id !== item.id);
+            onValueChange(option.id, next);
+          },
+        }));
+      }),
     );
   }
 
@@ -271,13 +278,13 @@ function BundleOptionField({
   const hasSelection = Boolean(selectedId);
   const supportsQty = supportsUserDefinedQuantity(inputType);
   const canEditQty = hasSelection
-    && canEditBundleOptionQuantity(inputType, selectedItem);
+    && canEditBundleOptionQuantity(inputType, selectedItem, bundleMeta, option);
   const adminQty = hasSelection
     ? resolveSelectionAdminQuantity(selectedItem)
     : 0;
   let qtyValue = 0;
   if (hasSelection) {
-    qtyValue = canEditQty ? (quantity ?? adminQty) : adminQty;
+    qtyValue = canEditQty ? (quantityMap[option.id] ?? adminQty) : adminQty;
   }
   const qtyDisabled = !hasSelection || !canEditQty;
   const qtyMin = hasSelection ? 1 : 0;
@@ -293,7 +300,7 @@ function BundleOptionField({
       option.required && h('span', { className: 'pdp-swatches__required' }, '*'),
     ]),
     control,
-    supportsQty && h('div', { className: 'pdp-swatches__option-qty-slot' }, h(BundleOptionQuantity, {
+    supportsQty && hasSelection && h('div', { className: 'pdp-swatches__option-qty-slot' }, h(BundleOptionQuantity, {
       key: option.id,
       optionId: option.id,
       quantity: qtyValue,
@@ -336,6 +343,11 @@ function BundleOptionsList({
     if (!option) return {};
 
     const inputType = getOptionInputType(option);
+
+    if (isMultiValueInputType(inputType)) {
+      return {};
+    }
+
     if (!isDropdownInputType(inputType) && inputType !== 'radio') {
       return {};
     }
@@ -364,10 +376,10 @@ function BundleOptionsList({
     commitSelection(nextSelectedMap, nextQuantityMap);
   }, [commitSelection, updateQuantityForSelection]);
 
-  const handleQuantityChange = useCallback((optionId, quantity) => {
+  const handleQuantityChange = useCallback((qtyKey, quantity) => {
     const nextQuantityMap = {
       ...selectionRef.current.quantityMap,
-      [optionId]: quantity,
+      [qtyKey]: quantity,
     };
     commitSelection(selectionRef.current.selectedMap, nextQuantityMap);
   }, [commitSelection]);
@@ -379,7 +391,7 @@ function BundleOptionsList({
       key: option.id,
       option,
       value: selectedMap[option.id],
-      quantity: quantityMap[option.id],
+      quantityMap,
       onValueChange: handleValueChange,
       onQuantityChange: handleQuantityChange,
       chooseLabel,

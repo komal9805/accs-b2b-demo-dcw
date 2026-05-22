@@ -7,16 +7,16 @@ import {
 } from '@dropins/storefront-pdp/api.js';
 import { getProductBundleMeta, setProductBundleMeta } from './bundle-meta-store.js';
 
-const USER_QTY_INPUT_TYPES = new Set(['radio', 'dropdown']);
+const BUNDLE_QTY_INPUT_TYPES = new Set(['radio', 'dropdown']);
 const MULTI_VALUE_INPUT_TYPES = new Set(['checkbox', 'multiselect']);
 const BUNDLE_PRICE_SYNC_DEBOUNCE_MS = 400;
 
 /**
  * Magento admin "User Defined Qty" (GraphQL: can_change_quantity) applies to
- * Radio and Drop-down selections only when explicitly enabled in admin.
+ * bundle selections when explicitly enabled in admin.
  */
 export function canCustomerChangeQuantity(inputType, canChangeQuantity) {
-  if (inputType !== 'radio' && inputType !== 'dropdown') {
+  if (!BUNDLE_QTY_INPUT_TYPES.has(inputType)) {
     return false;
   }
 
@@ -26,17 +26,14 @@ export function canCustomerChangeQuantity(inputType, canChangeQuantity) {
 /**
  * Whether the selected bundle item allows customer qty edits on the storefront.
  */
-export function canEditBundleOptionQuantity(inputType, selectedItem) {
+export function canEditBundleOptionQuantity(inputType, selectedItem, meta = null, option = null) {
   if (!selectedItem?.id || !supportsUserDefinedQuantity(inputType)) {
     return false;
   }
 
-  if (selectedItem.canChangeQuantity === false) {
-    return false;
-  }
-
-  if (inputType === 'radio') {
-    return selectedItem.canChangeQuantity !== false;
+  const bundleMeta = meta || getProductBundleMeta();
+  if (bundleMeta && option) {
+    return resolveItemCanChangeQuantity(selectedItem, option, bundleMeta);
   }
 
   return selectedItem.canChangeQuantity === true;
@@ -83,8 +80,18 @@ export function getBundleInputType(option, typeOverride) {
   return 'radio';
 }
 
+/**
+ * Magento admin "User Defined Qty" applies to radio and drop-down selections only.
+ */
 export function supportsUserDefinedQuantity(inputType) {
-  return USER_QTY_INPUT_TYPES.has(inputType);
+  return BUNDLE_QTY_INPUT_TYPES.has(inputType);
+}
+
+/**
+ * Quantity map key – per option group for radio/dropdown.
+ */
+export function getBundleQuantityKey(option, item = null) {
+  return option.id;
 }
 
 export function isDropdownInputType(inputType) {
@@ -93,6 +100,14 @@ export function isDropdownInputType(inputType) {
 
 export function isMultiValueInputType(inputType) {
   return MULTI_VALUE_INPUT_TYPES.has(inputType);
+}
+
+/**
+ * Radio/dropdown selections support admin User Defined Qty and can be probed via cart.
+ * Checkbox/multiselect use fixed default qty per Magento admin.
+ */
+export function supportsCartQtyProbe(inputType) {
+  return supportsUserDefinedQuantity(inputType) && !isMultiValueInputType(inputType);
 }
 
 /**
@@ -179,15 +194,21 @@ export function resolveBundleOptionInputType(option, meta = {}) {
 }
 
 function getCoreSelectionMeta(item, meta = {}, option = null) {
-  const { selections = {}, items: itemMetaMap = {} } = meta;
-  const itemMeta = itemMetaMap[item.id] || {};
+  const { selections = {} } = meta;
   const candidates = [];
+  const parsed = parseBundleOptionUid(item.id);
+  const itemLabel = (item.label || item.title || '').trim();
+  const optionTitle = (option?.title || option?.label || '').trim();
+  const sku = item.product?.sku;
+
+  if (sku && selections[`sku:${sku}`]) {
+    candidates.push(selections[`sku:${sku}`]);
+  }
 
   if (selections[item.id]) {
     candidates.push(selections[item.id]);
   }
 
-  const parsed = parseBundleOptionUid(item.id);
   if (parsed?.optionId && parsed?.selectionId) {
     const byIds = selections[`${parsed.optionId}:${parsed.selectionId}`];
     if (byIds) {
@@ -195,8 +216,6 @@ function getCoreSelectionMeta(item, meta = {}, option = null) {
     }
   }
 
-  const optionTitle = option?.title || option?.label;
-  const itemLabel = item.label || item.title;
   if (optionTitle && itemLabel) {
     const byLabel = selections[`label:${optionTitle}:${itemLabel}`];
     if (byLabel) {
@@ -204,26 +223,75 @@ function getCoreSelectionMeta(item, meta = {}, option = null) {
     }
   }
 
-  const withDefault = candidates.find((entry) => entry.isDefault === true);
-  const merged = candidates.reduce((acc, entry) => ({ ...acc, ...entry }), {});
+  if (!candidates.some((entry) => parseCanChangeQuantity(entry.canChangeQuantity) !== undefined)) {
+    const scanned = Object.values(selections).find((entry) => {
+      if (sku && entry.sku === sku) {
+        return true;
+      }
 
-  return { ...itemMeta, ...(withDefault || merged) };
+      if (parsed?.selectionId && String(entry.selectionId) === String(parsed.selectionId)) {
+        return !parsed.optionId || String(entry.optionId) === String(parsed.optionId);
+      }
+
+      if (!itemLabel || !optionTitle) {
+        return false;
+      }
+
+      return (entry.label || '').trim() === itemLabel
+        && (entry.optionTitle || '').trim() === optionTitle;
+    });
+
+    if (scanned) {
+      candidates.push(scanned);
+    }
+  }
+
+  return candidates.reduce((acc, entry) => {
+    const merged = { ...acc, ...entry };
+    const flag = parseCanChangeQuantity(entry.canChangeQuantity);
+    if (flag !== undefined) {
+      merged.canChangeQuantity = flag;
+    }
+    return merged;
+  }, {});
 }
 
-export function resolveCanChangeQuantity(inputType, coreSelectionMeta) {
-  if (inputType !== 'radio' && inputType !== 'dropdown') {
+/**
+ * Resolves whether a bundle selection allows customer qty edits (from Magento meta).
+ */
+export function resolveItemCanChangeQuantity(item, option, meta) {
+  if (!item?.id) {
     return false;
   }
 
-  if (coreSelectionMeta.canChangeQuantity === true) {
+  if (!meta?.selections || !Object.keys(meta.selections).length) {
+    return item.canChangeQuantity === true;
+  }
+
+  const selectionMeta = getCoreSelectionMeta(item, meta, option);
+  return parseCanChangeQuantity(selectionMeta.canChangeQuantity) === true;
+}
+
+export function parseCanChangeQuantity(value) {
+  if (value === true || value === 1) {
     return true;
   }
 
-  if (coreSelectionMeta.canChangeQuantity === false) {
+  if (value === false || value === 0) {
     return false;
   }
 
-  return inputType === 'radio';
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1' || normalized === 'yes') {
+      return true;
+    }
+    if (normalized === 'false' || normalized === '0' || normalized === 'no') {
+      return false;
+    }
+  }
+
+  return undefined;
 }
 
 function isBundleOption(option) {
@@ -304,7 +372,11 @@ export function buildBundleItemMeta(rawProduct, meta = {}) {
         defaultQuantity,
         optionId: parsed?.optionId ?? option.id,
         selectionId: parsed?.selectionId,
-        canChangeQuantity: resolveCanChangeQuantity(inputType, coreSelectionMeta),
+        canChangeQuantity: resolveItemCanChangeQuantity(
+          { id: value.id, product: value.product, label: value.title || value.label },
+          option,
+          meta,
+        ),
         ...(coreSelectionMeta.isDefault === true ? { isDefault: true } : {}),
       };
     });
@@ -313,7 +385,7 @@ export function buildBundleItemMeta(rawProduct, meta = {}) {
   return { items, options };
 }
 
-function enrichBundleItem(item, option, meta, bundleInputType) {
+function enrichBundleItem(item, option, meta, _bundleInputType) {
   const itemMeta = meta.items?.[item.id] || meta[item.id] || {};
   const coreSelectionMeta = getCoreSelectionMeta(item, meta, option);
   const parsed = parseBundleOptionUid(item.id);
@@ -327,9 +399,7 @@ function enrichBundleItem(item, option, meta, bundleInputType) {
       ?? parsed?.quantity,
     ) || 1,
   );
-  const canChangeQuantity = itemMeta.canChangeQuantity !== undefined
-    ? itemMeta.canChangeQuantity
-    : resolveCanChangeQuantity(bundleInputType, coreSelectionMeta);
+  const canChangeQuantity = resolveItemCanChangeQuantity(item, option, meta);
   const isDefault = coreSelectionMeta.isDefault === true || itemMeta.isDefault === true;
 
   return {
@@ -420,16 +490,20 @@ export function getSelectedItemIds(option, selectedMap) {
   return value ? [value] : [];
 }
 
-function resolveSelectionQuantity(inputType, option, quantityMap, item) {
-  const canEdit = canEditBundleOptionQuantity(inputType, item);
+function resolveSelectionQuantity(
+  inputType,
+  option,
+  quantityMap,
+  item,
+  meta = getProductBundleMeta(),
+) {
+  const canEdit = canEditBundleOptionQuantity(inputType, item, meta, option);
+  const qtyKey = getBundleQuantityKey(option, item);
+  const mappedQty = quantityMap[qtyKey] ?? quantityMap[option.id];
 
-  if (supportsUserDefinedQuantity(inputType) && canEdit) {
-    const mappedQty = quantityMap[option.id];
-    if (mappedQty !== undefined && mappedQty !== null) {
-      return Math.max(inputType === 'dropdown' && mappedQty === 0 ? 0 : 1, Number(mappedQty) || 0);
-    }
-
-    return Math.max(1, Number(item.defaultQuantity ?? 1) || 1);
+  if (canEdit && mappedQty !== undefined && mappedQty !== null) {
+    const minQty = isDropdownInputType(inputType) && mappedQty === 0 ? 0 : 1;
+    return Math.max(minQty, Number(mappedQty) || 0);
   }
 
   return Math.max(1, Number(item.defaultQuantity ?? 1) || 1);
@@ -451,7 +525,14 @@ export function buildBundleSelectionPayload(options, selectedMap, quantityMap = 
       const item = option.items?.find(({ id }) => id === itemId);
       if (!item) return;
 
-      const quantity = resolveSelectionQuantity(inputType, option, quantityMap, item);
+      const bundleMeta = getProductBundleMeta();
+      const quantity = resolveSelectionQuantity(
+        inputType,
+        option,
+        quantityMap,
+        item,
+        bundleMeta,
+      );
       const uid = buildBundleOptionUid(
         item.bundleOptionId,
         item.selectionId ?? parseBundleOptionUid(item.id)?.selectionId,
@@ -460,7 +541,7 @@ export function buildBundleSelectionPayload(options, selectedMap, quantityMap = 
 
       optionsUIDs.push(uid);
 
-      if (item.canChangeQuantity) {
+      if (canEditBundleOptionQuantity(inputType, item, bundleMeta, option)) {
         enteredOptions.push({ uid, value: String(quantity) });
       }
     });
