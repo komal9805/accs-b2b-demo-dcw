@@ -366,10 +366,6 @@ function resolveSelectionInputType(optionTypes, entry) {
   return undefined;
 }
 
-function hasMagentoBundleMeta(magentoMeta = {}) {
-  return Object.keys(magentoMeta.selections || {}).length > 0;
-}
-
 function collectPrimarySelectionUids(selections = {}) {
   return Object.keys(selections).filter((key) => parseBundleOptionUid(key));
 }
