@@ -6,6 +6,11 @@ on:
       - 'blocks/**'
     types: [opened, synchronize, reopened]
 
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
 jobs:
   check-block-readme:
     runs-on: ubuntu-latest
@@ -13,7 +18,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0  # Fetch full history for proper diff
 
@@ -53,8 +58,10 @@ jobs:
         fi
 
     - name: Comment on PR
-      if: steps.check-blocks.outputs.has_block_changes == 'true'
-      uses: actions/github-script@v7
+      if: |
+        steps.check-blocks.outputs.has_block_changes == 'true' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      uses: actions/github-script@v8
       with:
         script: |
           const changedBlocks = '${{ steps.check-blocks.outputs.changed_blocks }}'.split(',');
@@ -62,7 +69,6 @@ jobs:
 
           const hasMissingReadmes = missingReadmes.length > 0;
           const emoji = hasMissingReadmes ? '⚠️' : '📝';
-          const statusColor = hasMissingReadmes ? 'FF6B6B' : 'FFA500';
 
           let comment = `## ${emoji} Block Changes Detected\n\n`;
           comment += `This PR contains changes to the following blocks:\n\n`;
@@ -127,8 +133,10 @@ jobs:
           }
 
     - name: Remove comment if no block changes
-      if: steps.check-blocks.outputs.has_block_changes == 'false'
-      uses: actions/github-script@v7
+      if: |
+        steps.check-blocks.outputs.has_block_changes == 'false' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      uses: actions/github-script@v8
       with:
         script: |
           // Check if we previously commented on this PR

@@ -103,8 +103,7 @@
 .pdp-swatches--bundle .pdp-swatches__options--radio,
 .pdp-swatches--bundle .pdp-swatches__options--checkbox {
   display: flex !important;
-  flex-direction: column !important;
-  flex-wrap: nowrap !important;
+  flex-flow: column nowrap !important;
   align-items: stretch !important;
   gap: var(--spacing-xsmall);
   width: 100%;
@@ -155,8 +154,6 @@
 
 .pdp-swatches--bundle .pdp-swatches__dropdown {
   appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
   box-sizing: border-box;
   width: 100%;
   min-height: var(--spacing-xbig, 2.5rem);
