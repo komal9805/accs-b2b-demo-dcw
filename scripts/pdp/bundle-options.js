@@ -5,7 +5,12 @@ import {
   setProductConfigurationValues,
   setProductConfigurationValid,
 } from '@dropins/storefront-pdp/api.js';
-import { getProductBundleMeta, setProductBundleMeta } from './bundle-meta-store.js';
+import {
+  getProductBundleMeta,
+  getCachedCanChangeQuantity,
+  setProductBundleMeta,
+} from './bundle-meta-store.js';
+import { getUserDefinedQtyBySku, getSelectionSku } from './bundle-user-defined-qty.js';
 
 const BUNDLE_QTY_INPUT_TYPES = new Set(['radio', 'dropdown']);
 const MULTI_VALUE_INPUT_TYPES = new Set(['checkbox', 'multiselect']);
@@ -32,11 +37,17 @@ export function canEditBundleOptionQuantity(inputType, selectedItem, meta = null
   }
 
   const bundleMeta = meta || getProductBundleMeta();
-  if (bundleMeta && option) {
-    return resolveItemCanChangeQuantity(selectedItem, option, bundleMeta);
+  const selectionSku = getSelectionSku(selectedItem);
+  const bundleSku = bundleMeta?.sku;
+
+  if (selectionSku && bundleSku) {
+    const bySku = getUserDefinedQtyBySku(bundleSku, selectionSku);
+    if (bySku !== undefined) {
+      return bySku === true;
+    }
   }
 
-  return selectedItem.canChangeQuantity === true;
+  return resolveItemCanChangeQuantity(selectedItem, option, bundleMeta);
 }
 
 /**
@@ -90,7 +101,7 @@ export function supportsUserDefinedQuantity(inputType) {
 /**
  * Quantity map key – per option group for radio/dropdown.
  */
-export function getBundleQuantityKey(option, item = null) {
+export function getBundleQuantityKey(option) {
   return option.id;
 }
 
@@ -201,12 +212,12 @@ function getCoreSelectionMeta(item, meta = {}, option = null) {
   const optionTitle = (option?.title || option?.label || '').trim();
   const sku = item.product?.sku;
 
-  if (sku && selections[`sku:${sku}`]) {
-    candidates.push(selections[`sku:${sku}`]);
-  }
-
   if (selections[item.id]) {
     candidates.push(selections[item.id]);
+  }
+
+  if (sku && selections[`sku:${sku}`]) {
+    candidates.push(selections[`sku:${sku}`]);
   }
 
   if (parsed?.optionId && parsed?.selectionId) {
@@ -257,19 +268,38 @@ function getCoreSelectionMeta(item, meta = {}, option = null) {
 }
 
 /**
+ * Returns true | false when resolved, undefined when still unknown.
+ */
+export function getSelectionCanChangeQuantityFlag(item, option, meta = getProductBundleMeta()) {
+  if (!item?.id) {
+    return undefined;
+  }
+
+  const bundleMeta = meta || getProductBundleMeta();
+  const selectionMeta = getCoreSelectionMeta(item, bundleMeta, option);
+  const resolved = parseCanChangeQuantity(selectionMeta.canChangeQuantity);
+
+  if (resolved !== undefined) {
+    return resolved;
+  }
+
+  const cached = getCachedCanChangeQuantity(bundleMeta?.sku, selectionMeta);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  return undefined;
+}
+
+export function isSelectionCanChangeQuantityResolved(item, option, meta = getProductBundleMeta()) {
+  return getSelectionCanChangeQuantityFlag(item, option, meta) !== undefined;
+}
+
+/**
  * Resolves whether a bundle selection allows customer qty edits (from Magento meta).
  */
 export function resolveItemCanChangeQuantity(item, option, meta) {
-  if (!item?.id) {
-    return false;
-  }
-
-  if (!meta?.selections || !Object.keys(meta.selections).length) {
-    return item.canChangeQuantity === true;
-  }
-
-  const selectionMeta = getCoreSelectionMeta(item, meta, option);
-  return parseCanChangeQuantity(selectionMeta.canChangeQuantity) === true;
+  return getSelectionCanChangeQuantityFlag(item, option, meta) === true;
 }
 
 export function parseCanChangeQuantity(value) {
@@ -307,13 +337,18 @@ function isBundleProductOptions(options) {
   return options?.some(isBundleOption);
 }
 
-export function resolveSelectionAdminQuantity(item) {
+export function resolveSelectionAdminQuantity(item, option = null, meta = getProductBundleMeta()) {
   if (!item) return 1;
+
+  const coreMeta = meta?.selections
+    ? getCoreSelectionMeta(item, meta, option)
+    : {};
 
   return Math.max(
     1,
     Number(
-      item.defaultQuantity
+      coreMeta.defaultQuantity
+      ?? item.defaultQuantity
       ?? item.quantity
       ?? parseBundleOptionUid(item.id)?.quantity,
     ) || 1,
@@ -368,15 +403,17 @@ export function buildBundleItemMeta(rawProduct, meta = {}) {
         ) || 1,
       );
 
+      const canChangeQuantity = getSelectionCanChangeQuantityFlag(
+        { id: value.id, product: value.product, label: value.title || value.label },
+        option,
+        meta,
+      );
+
       items[value.id] = {
         defaultQuantity,
         optionId: parsed?.optionId ?? option.id,
         selectionId: parsed?.selectionId,
-        canChangeQuantity: resolveItemCanChangeQuantity(
-          { id: value.id, product: value.product, label: value.title || value.label },
-          option,
-          meta,
-        ),
+        ...(canChangeQuantity !== undefined ? { canChangeQuantity } : {}),
         ...(coreSelectionMeta.isDefault === true ? { isDefault: true } : {}),
       };
     });
@@ -399,7 +436,7 @@ function enrichBundleItem(item, option, meta, _bundleInputType) {
       ?? parsed?.quantity,
     ) || 1,
   );
-  const canChangeQuantity = resolveItemCanChangeQuantity(item, option, meta);
+  const canChangeQuantity = getSelectionCanChangeQuantityFlag(item, option, meta);
   const isDefault = coreSelectionMeta.isDefault === true || itemMeta.isDefault === true;
 
   return {
@@ -407,7 +444,7 @@ function enrichBundleItem(item, option, meta, _bundleInputType) {
     defaultQuantity,
     bundleOptionId: itemMeta.optionId ?? parsed?.optionId ?? option.id,
     selectionId: itemMeta.selectionId ?? parsed?.selectionId,
-    canChangeQuantity,
+    ...(canChangeQuantity !== undefined ? { canChangeQuantity } : {}),
     isDefault,
   };
 }
@@ -498,7 +535,7 @@ function resolveSelectionQuantity(
   meta = getProductBundleMeta(),
 ) {
   const canEdit = canEditBundleOptionQuantity(inputType, item, meta, option);
-  const qtyKey = getBundleQuantityKey(option, item);
+  const qtyKey = getBundleQuantityKey(option);
   const mappedQty = quantityMap[qtyKey] ?? quantityMap[option.id];
 
   if (canEdit && mappedQty !== undefined && mappedQty !== null) {

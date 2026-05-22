@@ -40,13 +40,15 @@ function formatBundleValueLine(value, locale = undefined) {
   let line = `${qty} x ${label}`;
 
   if (price && !Number.isNaN(price.amount)) {
+    const lineTotal = price.amount * qty;
+
     try {
       line += ` ${new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: price.currency,
-      }).format(price.amount)}`;
+      }).format(lineTotal)}`;
     } catch {
-      line += ` $${price.amount.toFixed(2)}`;
+      line += ` $${lineTotal.toFixed(2)}`;
     }
   }
 
@@ -93,9 +95,33 @@ export function transformCartBundleOptions(rawCart, locale = undefined) {
         return {};
       }
 
-      return {
+      const rowTotal = rawItem.prices?.row_total;
+      const quantity = Math.max(1, Number(rawItem.quantity) || 1);
+      const bundleItem = {
         bundleOptions: formatBundleCartOptions(rawItem.bundle_options, locale),
       };
+
+      // Bundle lines use original_row_total / original_item_price in the drop-in,
+      // but subtotal and row totals use row_total.
+      if (rowTotal?.value != null) {
+        const unitPrice = rowTotal.value / quantity;
+        const currency = rowTotal.currency || 'USD';
+        const unitPriceShape = { value: unitPrice, currency };
+
+        bundleItem.total = { value: rowTotal.value, currency };
+        bundleItem.price = unitPriceShape;
+        bundleItem.regularPrice = unitPriceShape;
+
+        const rowTotalInclTax = rawItem.prices?.row_total_including_tax;
+        if (rowTotalInclTax?.value != null) {
+          bundleItem.taxedPrice = {
+            value: rowTotalInclTax.value / quantity,
+            currency: rowTotalInclTax.currency || currency,
+          };
+        }
+      }
+
+      return bundleItem;
     }),
   };
 }

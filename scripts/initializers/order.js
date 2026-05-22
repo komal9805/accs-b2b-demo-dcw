@@ -19,6 +19,7 @@ import {
   SALES_ORDER_VIEW_PATH,
   rootLink,
 } from '../commerce.js';
+import { transformOrderBundleItems } from '../order/format-bundle-order-items.js';
 
 await initializeDropin(async () => {
   // Set Fetch GraphQL (Core)
@@ -71,6 +72,11 @@ await initializeDropin(async () => {
     langDefinitions,
     orderRef,
     returnRef,
+    models: {
+      OrderDataModel: {
+        transformer: transformOrderBundleItems,
+      },
+    },
   });
 })();
 
@@ -118,6 +124,11 @@ async function handleUserOrdersRedirects(
       langDefinitions,
       orderRef,
       returnRef,
+      models: {
+        OrderDataModel: {
+          transformer: transformOrderBundleItems,
+        },
+      },
     });
   }
 }

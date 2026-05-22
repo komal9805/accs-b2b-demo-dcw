@@ -120,6 +120,7 @@ await initializeDropin(async () => {
     : {};
 
   const productBundleMeta = {
+    sku,
     ...bundleItemMeta,
     optionTypes: mergedOptionTypes,
     selections: coreBundleMeta.selections || {},

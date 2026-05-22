@@ -1,11 +1,23 @@
 import { CORE_FETCH_GRAPHQL, CS_FETCH_GRAPHQL } from '../commerce.js';
 import {
+  applyBundleProductTransform,
+  buildBundleItemMeta,
+  getSelectionCanChangeQuantityFlag,
   inferMultiInputTypeFromTitle,
   isMultiValueInputType,
+  isSelectionCanChangeQuantityResolved,
   parseBundleOptionUid,
   parseCanChangeQuantity,
+  resolveBundleOptionInputType,
   supportsCartQtyProbe,
 } from './bundle-options.js';
+import {
+  getCachedCanChangeQuantity,
+  getCachedCanChangeQuantityMap,
+  getProductBundleMeta,
+  setCachedCanChangeQuantity,
+  setProductBundleMeta,
+} from './bundle-meta-store.js';
 
 const MAGENTO_BUNDLE_QUERY = `
   query GetBundleOptionTypes($sku: String!) {
@@ -103,7 +115,7 @@ function buildProbeBundleQtyMutation(sku, uid, probeQty) {
             items {
               ... on BundleCartItem {
                 bundle_options {
-                  values { quantity }
+                  values { uid quantity }
                 }
               }
             }
@@ -384,7 +396,7 @@ function applyFixedQuantityForMultiValueOptions(meta) {
 
 async function createGuestCartId() {
   const { data, errors } = await withTimeout(
-    CORE_FETCH_GRAPHQL.fetchGraphQl(CREATE_GUEST_CART_MUTATION, {}),
+    CS_FETCH_GRAPHQL.fetchGraphQl(CREATE_GUEST_CART_MUTATION, {}),
     CART_PROBE_TIMEOUT_MS,
   );
 
@@ -395,30 +407,64 @@ async function createGuestCartId() {
   return data?.createGuestCart?.cart?.id || null;
 }
 
-function readCartSelectionQuantity(addToCartResult) {
-  const items = addToCartResult?.cart?.itemsV2?.items || [];
-  const bundleItems = items.filter((item) => item?.bundle_options?.length);
-  const latestItem = bundleItems[bundleItems.length - 1];
-  const firstValue = latestItem?.bundle_options?.[0]?.values?.[0];
-
-  if (firstValue?.quantity === undefined) {
-    return null;
+function selectionIdsMatch(targetUid, cartValueUid) {
+  if (targetUid === cartValueUid) {
+    return true;
   }
 
-  return Number(firstValue.quantity);
+  const target = parseBundleOptionUid(targetUid);
+  const cartValue = parseBundleOptionUid(cartValueUid);
+  const hasTargetIds = target?.optionId && target?.selectionId;
+  const hasCartIds = cartValue?.optionId && cartValue?.selectionId;
+
+  if (!hasTargetIds || !hasCartIds) {
+    return false;
+  }
+
+  return String(target.optionId) === String(cartValue.optionId)
+    && String(target.selectionId) === String(cartValue.selectionId);
+}
+
+function readCartSelectionQuantity(addToCartResult, selectionUid) {
+  const items = addToCartResult?.cart?.itemsV2?.items || [];
+
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const bundleOptions = items[i]?.bundle_options || [];
+
+    const matchedValue = bundleOptions.reduce((found, option) => {
+      if (found) {
+        return found;
+      }
+
+      return option?.values?.find((value) => (
+        selectionIdsMatch(selectionUid, value?.uid)
+      )) || null;
+    }, null);
+
+    if (matchedValue?.quantity !== undefined && matchedValue?.quantity !== null) {
+      return Number(matchedValue.quantity);
+    }
+  }
+
+  return null;
 }
 
 /**
- * ACCS replaces core products(filter:) with Catalog Service, which omits
- * can_change_quantity. Probe via cart: fixed-qty selections ignore entered_options,
- * user-defined selections honor them.
+ * ACCS has no can_change_quantity on Catalog Service. Probe cart behavior instead.
+ * @returns {boolean|null} true = user-defined, false = fixed, null = probe failed
  */
-async function probeSelectionCanChangeQuantity(sku, uid, defaultQuantity, cartId) {
-  const probeQty = Math.max(Number(defaultQuantity) + 1, 2);
+async function probeSelectionCanChangeQuantity(sku, uid, defaultQuantity) {
+  const defaultQty = Math.max(1, Number(defaultQuantity) || 1);
+  const probeQty = defaultQty + 1;
+  const cartId = await createGuestCartId();
+
+  if (!cartId) {
+    return null;
+  }
 
   try {
     const { data, errors } = await withTimeout(
-      CORE_FETCH_GRAPHQL.fetchGraphQl(
+      CS_FETCH_GRAPHQL.fetchGraphQl(
         buildProbeBundleQtyMutation(sku, uid, probeQty),
         { variables: { cartId } },
       ),
@@ -426,53 +472,128 @@ async function probeSelectionCanChangeQuantity(sku, uid, defaultQuantity, cartId
     );
 
     if (errors?.length || data?.addProductsToCart?.user_errors?.length) {
-      return false;
+      return null;
     }
 
-    const cartQty = readCartSelectionQuantity(data?.addProductsToCart);
+    const cartQty = readCartSelectionQuantity(data?.addProductsToCart, uid);
     if (cartQty === null || Number.isNaN(cartQty)) {
-      return false;
+      return null;
     }
 
     return cartQty === probeQty;
   } catch {
-    return false;
+    return null;
   }
 }
 
-async function probeCanChangeQuantityFromCart(sku, meta) {
+async function probeSelectionWithRetry(sku, uid, defaultQuantity) {
+  const firstAttempt = await probeSelectionCanChangeQuantity(sku, uid, defaultQuantity);
+  if (firstAttempt !== null) {
+    return firstAttempt;
+  }
+
+  return probeSelectionCanChangeQuantity(sku, uid, defaultQuantity);
+}
+
+function applyCachedCanChangeQuantity(sku, meta) {
+  const cached = getCachedCanChangeQuantityMap(sku);
+
+  collectPrimarySelectionUids(meta.selections).forEach((uid) => {
+    const entry = meta.selections[uid];
+    let cacheKey = null;
+
+    if (entry?.optionId != null && entry?.selectionId != null) {
+      cacheKey = `${entry.optionId}:${entry.selectionId}`;
+    } else if (entry?.sku) {
+      cacheKey = `sku:${entry.sku}`;
+    }
+
+    if (cacheKey === null || cached[cacheKey] === undefined) {
+      return;
+    }
+
+    applyCanChangeQuantityToSelection(meta, uid, cached[cacheKey], entry);
+  });
+}
+
+function clearProbedCanChangeQuantityFlags(meta) {
+  collectPrimarySelectionUids(meta.selections || {}).forEach((uid) => {
+    const entry = meta.selections[uid];
+    if (!entry) {
+      return;
+    }
+
+    const inputType = resolveSelectionInputType(meta.optionTypes, entry);
+    if (!supportsCartQtyProbe(inputType)) {
+      return;
+    }
+
+    const keys = new Set([uid]);
+    if (entry.optionId != null && entry.selectionId != null) {
+      keys.add(`${entry.optionId}:${entry.selectionId}`);
+    }
+    if (entry.sku) {
+      keys.add(`sku:${entry.sku}`);
+    }
+    if (entry.optionTitle && entry.label) {
+      keys.add(`label:${entry.optionTitle}:${entry.label}`);
+    }
+
+    keys.forEach((key) => {
+      if (meta.selections[key]) {
+        delete meta.selections[key].canChangeQuantity;
+      }
+    });
+  });
+}
+
+async function probeCanChangeQuantityFromCart(sku, meta, { force = false } = {}) {
   if (!sku || !meta?.selections) {
     return meta;
   }
 
   applyFixedQuantityForMultiValueOptions(meta);
 
+  if (force) {
+    clearProbedCanChangeQuantityFlags(meta);
+  } else {
+    applyCachedCanChangeQuantity(sku, meta);
+  }
+
   const probeTargets = collectPrimarySelectionUids(meta.selections)
     .map((uid) => ({ uid, entry: meta.selections[uid] }))
     .filter(({ entry }) => supportsCartQtyProbe(
       resolveSelectionInputType(meta.optionTypes, entry),
+    ))
+    .filter(({ entry }) => (
+      parseCanChangeQuantity(entry.canChangeQuantity) === undefined
     ));
-
-  if (!probeTargets.length) {
-    return meta;
-  }
-
-  const cartId = await createGuestCartId();
-  if (!cartId) {
-    return meta;
-  }
 
   await probeTargets.reduce(async (chain, { uid, entry }) => {
     await chain;
-    const defaultQuantity = Math.max(1, Number(entry.defaultQuantity) || 1);
-    const canChangeQuantity = await probeSelectionCanChangeQuantity(
+
+    const cached = getCachedCanChangeQuantity(sku, entry);
+    if (cached !== undefined) {
+      applyCanChangeQuantityToSelection(meta, uid, cached, entry);
+      return;
+    }
+
+    const defaultQuantity = Math.max(
+      1,
+      Number(entry.defaultQuantity) || parseBundleOptionUid(uid)?.quantity || 1,
+    );
+    const canChangeQuantity = await probeSelectionWithRetry(
       sku,
       uid,
       defaultQuantity,
-      cartId,
     );
 
+    if (canChangeQuantity === null) {
+      return;
+    }
+
     applyCanChangeQuantityToSelection(meta, uid, canChangeQuantity, entry);
+    setCachedCanChangeQuantity(sku, entry, canChangeQuantity);
   }, Promise.resolve());
 
   return meta;
@@ -492,14 +613,101 @@ export async function fetchBundleCoreMeta(sku, rawProduct = null) {
   ]);
 
   const merged = mergeBundleMetaSources(catalogMeta, magentoMeta);
-
-  if (!hasMagentoBundleMeta(magentoMeta)) {
-    await probeCanChangeQuantityFromCart(sku, merged);
-  } else {
-    applyFixedQuantityForMultiValueOptions(merged);
-  }
+  applyFixedQuantityForMultiValueOptions(merged);
 
   return merged;
+}
+
+/**
+ * Probes a single selection when its user-defined qty flag is not yet known.
+ */
+export async function ensureSelectionCanChangeQuantity(sku, item, option) {
+  const meta = getProductBundleMeta();
+  if (!sku || !item?.id || !meta) {
+    return false;
+  }
+
+  const inputType = resolveBundleOptionInputType(option, meta);
+  if (!supportsCartQtyProbe(inputType)) {
+    return false;
+  }
+
+  if (isSelectionCanChangeQuantityResolved(item, option, meta)) {
+    return getSelectionCanChangeQuantityFlag(item, option, meta) === true;
+  }
+
+  const entry = meta.selections?.[item.id] || {};
+  const defaultQuantity = Math.max(
+    1,
+    Number(entry.defaultQuantity) || parseBundleOptionUid(item.id)?.quantity || 1,
+  );
+  const result = await probeSelectionWithRetry(sku, item.id, defaultQuantity);
+
+  if (result === null) {
+    return false;
+  }
+
+  applyCanChangeQuantityToSelection(meta, item.id, result, {
+    ...entry,
+    optionId: entry.optionId ?? parseBundleOptionUid(item.id)?.optionId,
+    selectionId: entry.selectionId ?? parseBundleOptionUid(item.id)?.selectionId,
+    sku: entry.sku ?? item.product?.sku,
+    label: entry.label ?? item.label ?? item.title,
+    optionTitle: entry.optionTitle ?? option.title ?? option.label,
+  });
+  setCachedCanChangeQuantity(sku, meta.selections[item.id], result);
+
+  if (meta.items?.[item.id]) {
+    meta.items[item.id] = { ...meta.items[item.id], canChangeQuantity: result };
+  }
+
+  setProductBundleMeta({
+    ...meta,
+    selections: { ...meta.selections },
+    items: meta.items ? { ...meta.items } : meta.items,
+  });
+
+  return result === true;
+}
+
+/**
+ * Probes every radio/dropdown selection and refreshes bundle product options.
+ */
+export async function ensureAllCanChangeQuantityMeta(sku, rawProduct) {
+  if (!sku || !rawProduct?.options?.length) {
+    return rawProduct;
+  }
+
+  const current = getProductBundleMeta() || {};
+  const catalogMeta = buildCatalogBundleMetaFromProduct(rawProduct);
+  const optionTypes = mergeBundleOptionTypes(rawProduct, {
+    optionTypes: { ...catalogMeta.optionTypes, ...current.optionTypes },
+  });
+  const metaForProbe = {
+    optionTypes,
+    selections: { ...catalogMeta.selections, ...current.selections },
+  };
+
+  await probeCanChangeQuantityFromCart(sku, metaForProbe, { force: true });
+
+  const bundleMetaContext = { ...metaForProbe, sku, optionTypes };
+  const bundleItemMeta = buildBundleItemMeta(rawProduct, bundleMetaContext);
+  const productBundleMeta = {
+    sku,
+    ...bundleItemMeta,
+    optionTypes,
+    selections: metaForProbe.selections,
+  };
+
+  setProductBundleMeta(productBundleMeta);
+  return applyBundleProductTransform(rawProduct);
+}
+
+/**
+ * Re-runs cart probe for can_change_quantity and refreshes in-memory bundle meta + product options.
+ */
+export async function syncBundleCanChangeQuantityMeta(sku, rawProduct) {
+  return ensureAllCanChangeQuantityMeta(sku, rawProduct);
 }
 
 /**
