@@ -1,0 +1,119 @@
+.notice-board__container {
+  width: 100%;
+}
+
+.notice-board__table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.notice-board__table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: var(--color-neutral-50);
+}
+
+.notice-board__caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.notice-board__table thead th {
+  padding: var(--spacing-small, 12px) var(--spacing-medium, 16px);
+  border: 1px solid var(--color-neutral-300);
+  background-color: var(--color-neutral-200);
+  color: var(--color-neutral-900);
+  font: var(--type-body-2-strong-font);
+  letter-spacing: var(--type-body-2-strong-letter-spacing);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.notice-board__table tbody th,
+.notice-board__table tbody td {
+  padding: var(--spacing-small, 12px) var(--spacing-medium, 16px);
+  border: 1px solid var(--color-neutral-300);
+  vertical-align: top;
+}
+
+.notice-board__title {
+  min-width: 10rem;
+  font-weight: 600;
+}
+
+.notice-board__message {
+  min-width: 16rem;
+  color: var(--color-neutral-800);
+  white-space: pre-wrap;
+}
+
+.notice-board__date {
+  min-width: 11rem;
+  color: var(--color-neutral-700);
+  font: var(--type-body-2-default-font);
+  letter-spacing: var(--type-body-2-default-letter-spacing);
+  white-space: nowrap;
+}
+
+.notice-board__date time {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+}
+
+.notice-board__empty,
+.notice-board__error {
+  margin: 0;
+  padding: var(--spacing-medium, 16px);
+  border-radius: 4px;
+}
+
+.notice-board__empty {
+  color: var(--color-neutral-700);
+  background-color: var(--color-neutral-100);
+}
+
+.notice-board__error {
+  color: var(--color-alert-800);
+  background-color: var(--color-alert-200);
+}
+
+.notice-board__row--skeleton .notice-board__skeleton {
+  display: block;
+  width: 100%;
+  height: 1rem;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--color-neutral-200) 25%,
+    var(--color-neutral-100) 50%,
+    var(--color-neutral-200) 75%
+  );
+  background-size: 200% 100%;
+  animation: notice-board-skeleton 1.2s ease-in-out infinite;
+}
+
+@keyframes notice-board-skeleton {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (width <= 768px) {
+  .notice-board__table thead th,
+  .notice-board__table tbody th,
+  .notice-board__table tbody td {
+    padding: var(--spacing-xsmall, 8px);
+  }
+}

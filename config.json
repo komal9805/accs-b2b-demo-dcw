@@ -16,6 +16,7 @@
       "commerce-b2b-enabled": true,
       "commerce-companies-enabled": true,
       "commerce-assets-enabled": false,
+      "notice-board-mesh-endpoint": "https://edge-sandbox-graph.adobe.io/api/58d1df6f-bbb6-4f2f-bb9c-79cd050186cb/graphql",
       "analytics": {
         "base-currency-code": "USD",
         "environment": "Testing",

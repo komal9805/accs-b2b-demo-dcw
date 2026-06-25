@@ -186,30 +186,8 @@ const e = `
     }
     only_x_left_in_stock
     stock_status
-    ... on SimpleProduct {
-      price_range {
-        ...PRICE_RANGE_FRAGMENT
-      }
-    }
-    ... on ConfigurableProduct {
-      price_range {
-        ...PRICE_RANGE_FRAGMENT
-      }
-    }
-    ... on VirtualProduct {
-      price_range {
-        ...PRICE_RANGE_FRAGMENT
-      }
-    }
-    ... on DownloadableProduct {
-      price_range {
-        ...PRICE_RANGE_FRAGMENT
-      }
-    }
-    ... on GiftCardProduct {
-      price_range {
-        ...PRICE_RANGE_FRAGMENT
-      }
+    price_range {
+      ...PRICE_RANGE_FRAGMENT
     }
   }
   ... on SimpleCartItem {
@@ -285,15 +263,6 @@ const e = `
       values {
         uid
         label
-        quantity
-        priceV2 {
-          value
-          currency
-        }
-        original_price {
-          value
-          currency
-        }
       }
     }
   }
