@@ -20,7 +20,7 @@
   padding: 0;
   margin: -1px;
   overflow: hidden;
-  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
 }
@@ -110,7 +110,7 @@
   }
 }
 
-@media (width <= 768px) {
+@media (max-width: 768px) {
   .notice-board__table thead th,
   .notice-board__table tbody th,
   .notice-board__table tbody td {
