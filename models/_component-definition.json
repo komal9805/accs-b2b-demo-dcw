@@ -45,6 +45,9 @@
         },
         {
           "...": "../blocks/targeted-block/_*.json#/definitions"
+        },
+        {
+          "...": "../blocks/testimonials/_*.json#/definitions"
         }
       ]
     },
@@ -54,9 +57,6 @@
       "components": [
         {
           "...": "../blocks/product-*/_*.json#/definitions"
-        },
-        {
-          "...": "../blocks/testimonials/_*.json#/definitions"
         }
       ]
     }

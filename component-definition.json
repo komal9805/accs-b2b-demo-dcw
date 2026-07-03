@@ -249,6 +249,16 @@
               "type": "key-value-block"
             }
           }
+        },
+        {
+          "title": "Testimonials",
+          "id": "testimonials",
+          "model": "testimonials",
+          "plugins": {
+            "da": {
+              "type": "key-value-block"
+            }
+          }
         }
       ]
     },
@@ -270,16 +280,6 @@
           "title": "Product Slider",
           "id": "product-slider",
           "model": "product-slider",
-          "plugins": {
-            "da": {
-              "type": "key-value-block"
-            }
-          }
-        },
-        {
-          "title": "Testimonials",
-          "id": "testimonials",
-          "model": "testimonials",
           "plugins": {
             "da": {
               "type": "key-value-block"
