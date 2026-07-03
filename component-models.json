@@ -310,20 +310,18 @@
         "name": "categoryIds",
         "label": "Category IDs",
         "required": true,
-        "valueType": "string"
+        "description": "Comma-separated Magento category entity IDs (e.g. 3, 4, 12)."
       },
       {
         "component": "text",
         "name": "pageSize",
         "label": "Page size",
-        "value": "12",
-        "valueType": "string"
+        "value": "12"
       },
       {
         "component": "text",
         "name": "heading",
-        "label": "Heading",
-        "valueType": "string"
+        "label": "Heading"
       }
     ]
   },
@@ -358,6 +356,46 @@
         "name": "fragment",
         "label": "Fragment",
         "valueType": "string"
+      }
+    ]
+  },
+  {
+    "id": "testimonials",
+    "fields": [
+      {
+        "component": "text",
+        "name": "heading",
+        "label": "Heading"
+      },
+      {
+        "component": "reference",
+        "name": "wallpaper",
+        "label": "CTA slide wallpaper",
+        "multi": false
+      },
+      {
+        "component": "text",
+        "name": "cta-label",
+        "label": "CTA label",
+        "value": "Submit Testimonial"
+      },
+      {
+        "component": "text",
+        "name": "success-message",
+        "label": "Success message",
+        "value": "Thank you! Your testimonial has been submitted and is pending review."
+      },
+      {
+        "component": "text",
+        "name": "max-items",
+        "label": "Max items",
+        "value": "10"
+      },
+      {
+        "component": "boolean",
+        "name": "autoplay",
+        "label": "Autoplay",
+        "value": true
       }
     ]
   }

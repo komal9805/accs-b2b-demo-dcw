@@ -54,6 +54,9 @@
       "components": [
         {
           "...": "../blocks/product-*/_*.json#/definitions"
+        },
+        {
+          "...": "../blocks/testimonials/_*.json#/definitions"
         }
       ]
     }

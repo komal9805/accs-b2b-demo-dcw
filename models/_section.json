@@ -138,7 +138,8 @@
         "text",
         "targeted-block",
         "product-recommendations",
-        "product-slider"
+        "product-slider",
+        "testimonials"
       ]
     }
   ]
