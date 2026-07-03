@@ -1,0 +1,57 @@
+{
+  "definitions": [
+    {
+      "title": "Testimonials",
+      "id": "testimonials",
+      "model": "testimonials",
+      "plugins": {
+        "da": {
+          "type": "key-value-block"
+        }
+      }
+    }
+  ],
+  "models": [
+    {
+      "id": "testimonials",
+      "fields": [
+        {
+          "component": "text",
+          "name": "heading",
+          "label": "Heading"
+        },
+        {
+          "component": "reference",
+          "name": "wallpaper",
+          "label": "CTA slide wallpaper",
+          "multi": false
+        },
+        {
+          "component": "text",
+          "name": "cta-label",
+          "label": "CTA label",
+          "value": "Submit Testimonial"
+        },
+        {
+          "component": "text",
+          "name": "success-message",
+          "label": "Success message",
+          "value": "Thank you! Your testimonial has been submitted and is pending review."
+        },
+        {
+          "component": "text",
+          "name": "max-items",
+          "label": "Max items",
+          "value": "10"
+        },
+        {
+          "component": "boolean",
+          "name": "autoplay",
+          "label": "Autoplay",
+          "value": true
+        }
+      ]
+    }
+  ],
+  "filters": []
+}
