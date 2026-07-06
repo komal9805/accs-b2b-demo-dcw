@@ -12,6 +12,7 @@ const GET_APPROVED_TESTIMONIALS_QUERY = `
         company
         rating
         testimonial_text
+        image_url
         created_at
       }
       total
@@ -31,6 +32,31 @@ const SUBMIT_TESTIMONIAL_MUTATION = `
 `;
 
 let endpointInitialized = false;
+
+export const TESTIMONIAL_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+export const TESTIMONIAL_IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp';
+export const TESTIMONIAL_IMAGE_HINT = 'Max size 2 MB. Allowed: JPG, JPEG, PNG, WebP.';
+
+const TESTIMONIAL_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+/**
+ * Validates an optional testimonial image file before upload.
+ * @param {File|null|undefined} file
+ * @returns {string|null} Error message or null when valid / not provided
+ */
+export function validateTestimonialImage(file) {
+  if (!file) return null;
+
+  if (!TESTIMONIAL_IMAGE_TYPES.has(file.type)) {
+    return 'Please upload a JPG, PNG, or WebP image (max 2 MB).';
+  }
+
+  if (file.size > TESTIMONIAL_IMAGE_MAX_BYTES) {
+    return 'Image must be 2 MB or smaller.';
+  }
+
+  return null;
+}
 
 function getGraphQLErrorMessage(errors, fallbackMessage) {
   const fallback = fallbackMessage || 'Something went wrong. Please try again.';
@@ -99,30 +125,58 @@ export async function fetchApprovedTestimonials() {
     company: item.company || '',
     rating: item.rating,
     testimonialText: item.testimonial_text,
+    imageUrl: item.image_url?.trim() || null,
     createdAt: item.created_at,
   }));
+}
+
+async function readFileAsBase64(file) {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+
+  return btoa(binary);
 }
 
 /**
  * Submits a testimonial for review.
  * @param {object} input Submission payload
+ * @param {File} [image] Optional customer image
  * @returns {Promise<{ id: string, status: string }>}
  */
-export async function submitTestimonial(input) {
+export async function submitTestimonial(input, image) {
   ensureEndpoint();
+
+  const mutationInput = {
+    name: input.name,
+    company: input.company || undefined,
+    email: input.email,
+    rating: input.rating,
+    testimonial_text: input.testimonialText,
+  };
+
+  if (image) {
+    const validationError = validateTestimonialImage(image);
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
+    mutationInput.image_base64 = await readFileAsBase64(image);
+    mutationInput.image_mimetype = image.type;
+    mutationInput.image_filename = image.name;
+  }
 
   const { data, errors } = await TESTIMONIALS_FETCH_GRAPHQL.fetchGraphQl(
     SUBMIT_TESTIMONIAL_MUTATION,
     {
       method: 'POST',
       variables: {
-        input: {
-          name: input.name,
-          company: input.company || undefined,
-          email: input.email,
-          rating: input.rating,
-          testimonial_text: input.testimonialText,
-        },
+        input: mutationInput,
       },
     },
   );

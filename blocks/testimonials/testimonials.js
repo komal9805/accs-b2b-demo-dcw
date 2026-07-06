@@ -1,5 +1,11 @@
 import { loadCSS, readBlockConfig } from '../../scripts/aem.js';
-import { fetchApprovedTestimonials, submitTestimonial } from '../../scripts/testimonials.js';
+import {
+  fetchApprovedTestimonials,
+  submitTestimonial,
+  TESTIMONIAL_IMAGE_ACCEPT,
+  TESTIMONIAL_IMAGE_HINT,
+  validateTestimonialImage,
+} from '../../scripts/testimonials.js';
 import createModal from '../modal/modal.js';
 
 const DEFAULT_SUCCESS_MESSAGE = 'Thank you! Your testimonial has been submitted and is pending review.';
@@ -343,6 +349,9 @@ function createTestimonialSlide({ testimonial, slideIndex, blockId }) {
   const card = document.createElement('blockquote');
   card.className = 'testimonials__card';
 
+  const body = document.createElement('div');
+  body.className = 'testimonials__card-body';
+
   const quote = document.createElement('p');
   quote.className = 'testimonials__quote';
   quote.textContent = testimonial.testimonialText;
@@ -365,7 +374,23 @@ function createTestimonialSlide({ testimonial, slideIndex, blockId }) {
 
   author.append(createStars(Math.min(5, Math.max(0, testimonial.rating || 0))));
 
-  card.append(quote, author);
+  body.append(quote, author);
+  card.append(body);
+
+  if (testimonial.imageUrl) {
+    const media = document.createElement('div');
+    media.className = 'testimonials__card-media';
+
+    const image = document.createElement('img');
+    image.className = 'testimonials__image';
+    image.src = testimonial.imageUrl;
+    image.alt = testimonial.name;
+    image.loading = 'lazy';
+    image.decoding = 'async';
+    media.append(image);
+    card.append(media);
+  }
+
   slide.append(card);
   return slide;
 }
@@ -475,6 +500,56 @@ function createFormField({
   return { field, control };
 }
 
+function createImageField() {
+  const field = document.createElement('div');
+  field.className = 'testimonials__field testimonials__field--image';
+
+  const fieldLabel = document.createElement('label');
+  fieldLabel.htmlFor = 'testimonial-image';
+  fieldLabel.textContent = 'Image (optional)';
+  field.append(fieldLabel);
+
+  const control = document.createElement('input');
+  control.type = 'file';
+  control.id = 'testimonial-image';
+  control.name = 'testimonial-image';
+  control.accept = TESTIMONIAL_IMAGE_ACCEPT;
+
+  const fieldHint = document.createElement('p');
+  fieldHint.className = 'testimonials__field-hint';
+  fieldHint.textContent = TESTIMONIAL_IMAGE_HINT;
+
+  const fieldError = document.createElement('p');
+  fieldError.className = 'testimonials__field-error';
+  fieldError.setAttribute('role', 'alert');
+  fieldError.hidden = true;
+
+  field.append(control, fieldHint, fieldError);
+
+  const showFieldError = (message) => {
+    if (message) {
+      fieldError.textContent = message;
+      fieldError.hidden = false;
+      return;
+    }
+
+    fieldError.textContent = '';
+    fieldError.hidden = true;
+  };
+
+  control.addEventListener('change', () => {
+    const selectedFile = control.files?.[0];
+    if (!selectedFile) {
+      showFieldError(null);
+      return;
+    }
+
+    showFieldError(validateTestimonialImage(selectedFile));
+  });
+
+  return { field, control, showFieldError };
+}
+
 function createSubmitOverlay() {
   const overlay = document.createElement('div');
   overlay.className = 'testimonials__submit-overlay';
@@ -542,6 +617,7 @@ function createSubmissionForm({
     required: true,
     multiline: true,
   });
+  const imageField = createImageField();
 
   const actions = document.createElement('div');
   actions.className = 'testimonials__form-actions';
@@ -565,6 +641,7 @@ function createSubmissionForm({
     emailField.field,
     ratingField,
     testimonialField.field,
+    imageField.field,
     actions,
   );
   form.append(header, body);
@@ -590,6 +667,7 @@ function createSubmissionForm({
     }
     submitButton.disabled = isSubmitting;
     cancelButton.disabled = isSubmitting;
+    imageField.control.disabled = isSubmitting;
     if (isSubmitting) {
       submitButton.setAttribute('aria-busy', 'true');
     } else {
@@ -613,6 +691,14 @@ function createSubmissionForm({
       return;
     }
 
+    const selectedImage = imageField.control.files?.[0] || null;
+    const imageValidationError = validateTestimonialImage(selectedImage);
+    if (imageValidationError) {
+      imageField.showFieldError(imageValidationError);
+      return;
+    }
+
+    imageField.showFieldError(null);
     setSubmitting(true);
 
     try {
@@ -622,7 +708,7 @@ function createSubmissionForm({
         email: emailField.control.value.trim(),
         rating: Number.parseInt(ratingInput.value, 10),
         testimonialText: testimonialField.control.value.trim(),
-      });
+      }, selectedImage);
     } catch (submitError) {
       console.error('Failed to submit testimonial', submitError);
       showError(submitError.message || 'Unable to submit your testimonial. Please try again.');
@@ -808,9 +894,9 @@ export default async function decorate(block) {
     const form = createSubmissionForm({
       overlay,
       getSubmitControls: () => ({ overlay, closeButton }),
-      onSubmit: async (input) => {
+      onSubmit: async (input, image) => {
         try {
-          await submitTestimonial(input);
+          await submitTestimonial(input, image);
           const dialogContent = activeModal.block.querySelector('.modal-content');
           if (dialogContent) {
             dialogContent.replaceChildren(createSuccessMessage(successMessage));

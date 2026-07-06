@@ -25,8 +25,8 @@ The Testimonials block renders a responsive homepage slider of approved customer
 
 The mesh must expose:
 
-- Query: `approved_testimonials { items { id name company rating testimonial_text created_at } total }`
-- Mutation: `submit_testimonial(input: { name, company, email, rating, testimonial_text })`
+- Query: `approved_testimonials { items { id name company rating testimonial_text image_url created_at } total }`
+- Mutation: `submit_testimonial(input: { name, company, email, rating, testimonial_text, image_base64?, image_mimetype?, image_filename? })`
 
 The mesh must include the storefront origin in `responseConfig.CORS.origin` so browser requests are allowed.
 
@@ -62,9 +62,10 @@ No events are emitted by this block.
 
 1. **Block Decoration**: Block reads configuration, fetches approved testimonials, and builds the slider
 2. **CTA Slide**: First slide always includes the submit CTA; optional wallpaper is applied when configured
-3. **Submit Testimonial**: Opens an accessible modal with name, company, email, rating, and testimonial fields
-4. **Submission**: Calls `submit_testimonial` via `scripts/testimonials.js`; email is sent to the API but never displayed in the public slider
-5. **Slider Navigation**: Indicators and autoplay (when enabled) navigate between slides
+3. **Submit Testimonial**: Opens an accessible modal with name, company, email, rating, testimonial, and optional image fields
+4. **Submission**: Calls `submit_testimonial` via `scripts/testimonials.js`; optional images are sent as base64 on the same mutation. Email is sent to the API but never displayed in the public slider
+5. **Slider Display**: Approved testimonials show an optional customer image on the right when `image_url` is returned
+6. **Slider Navigation**: Indicators and autoplay (when enabled) navigate between slides
 
 ### Error Handling
 
