@@ -15,3 +15,5 @@ scripts/__dropins__/**/*.map
 # IDE / local only
 .cursor/
 AGENTS.md
+.vscode/
+scratch/

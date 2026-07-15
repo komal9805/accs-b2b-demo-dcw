@@ -15,7 +15,8 @@
     }
   },
   "folders": {
-    "/products/": "/products/default"
+    "/products/": "/products/default",
+    "/fr/products/": "/fr/products/default"
   },
   "cdn": {
     "live": {
@@ -28,16 +29,16 @@
   "headers": {},
   "public": {
     "default": {
-      "commerce-core-endpoint": "{ENDPOINT}",
-      "commerce-endpoint": "{CS_ENDPOINT}",
+      "commerce-core-endpoint": "https://na1-sandbox.api.commerce.adobe.com/XjwLSnzMD376938ESNdoJm/graphql",
+      "commerce-endpoint": "https://na1-sandbox.api.commerce.adobe.com/XjwLSnzMD376938ESNdoJm/graphql",
       "headers": {
         "all": {
           "Store": "default"
         },
         "cs": {
-          "Magento-Store-Code": "{STORE_CODE}",
-          "Magento-Store-View-Code": "{STORE_VIEW_CODE}",
-          "Magento-Website-Code": "{WEBSITE_CODE}",
+          "Magento-Store-Code": "main_website_store",
+          "Magento-Store-View-Code": "default",
+          "Magento-Website-Code": "base",
           "x-api-key": "{COMMERCE_API_KEY}",
           "Magento-Environment-Id": "{COMMERCE_ENVIRONMENT_ID}"
         }
@@ -45,18 +46,36 @@
       "analytics": {
         "base-currency-code": "USD",
         "environment": "Production",
-        "store-id": "{STORE_ID}",
+        "store-id": "1",
         "store-name": "Main Website Store",
-        "store-url": "{DOMAIN}",
-        "store-view-id": "{STORE_VIEW_ID}",
-        "store-view-name": "Default Store View",
-        "website-id": "{WEBSITE_ID}",
+        "store-url": "https://coresaas-subgraph-external:8000/XjwLSnzMD376938ESNdoJm/",
+        "store-view-id": "1",
+        "store-view-name": "English Store View",
+        "website-id": "1",
         "website-name": "Main Website"
       },
       "plugins": {
         "picker": {
-           "rootCategory": "{YOUR_ROOT_CATEGORY_ID}"
+           "rootCategory": "2"
          }
+      }
+    },
+    "/fr/": {
+      "headers": {
+        "all": {
+          "Store": "fr_eu"
+        },
+        "cs": {
+          "Magento-Store-Code": "main_website_store",
+          "Magento-Website-Code": "base",
+          "Magento-Store-View-Code": "fr_eu"
+        }
+      },
+      "analytics": {
+        "base-currency-code": "EUR",
+        "store-view-code": "fr_eu",
+        "store-view-id": "5",
+        "store-view-name": "French Store View"
       }
     }
   },
