@@ -72,7 +72,6 @@
         }
       },
       "analytics": {
-        "base-currency-code": "EUR",
         "store-view-code": "fr_eu",
         "store-view-id": "5",
         "store-view-name": "French Store View"
